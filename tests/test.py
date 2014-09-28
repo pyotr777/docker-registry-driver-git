@@ -19,14 +19,14 @@ BAD_REMOTE = "localhost:1100:2-0"
 
 class TestQuery(testing.Query):
     def __init__(self):
-        self.scheme = 'elliptics'
+        self.scheme = 'git'
 
 
 class TestDriver(testing.Driver):
     def __init__(self):
-        self.scheme = 'elliptics'
+        self.scheme = 'git'
         self.path = ''
-        self.config = testing.Config({'elliptics_nodes': GOOD_REMOTE})
+        self.config = testing.Config({'git_nodes': GOOD_REMOTE})
 
     @tools.raises(exceptions.FileNotFoundError)
     def test_remove_inexistent_path(self):
@@ -36,10 +36,10 @@ class TestDriver(testing.Driver):
 
 class TestBorderDriverCases(object):
     def __init__(self):
-        self.scheme = 'elliptics'
+        self.scheme = 'git'
         self.path = ''
-        self.config = testing.Config({'elliptics_nodes': GOOD_REMOTE,
-                                      'elliptics_groups': [999, 1000]})
+        self.config = testing.Config({'git_nodes': GOOD_REMOTE,
+                                      'git_groups': [999, 1000]})
 
     def gen_random_string(self, length=16):
         return ''.join([random.choice(string.ascii_uppercase + string.digits)
@@ -68,9 +68,9 @@ class TestBorderDriverCases(object):
 
 class TestWriteStreaming(object):
     def __init__(self):
-        self.scheme = 'elliptics'
+        self.scheme = 'git'
         self.path = ''
-        self.config = testing.Config({'elliptics_nodes': GOOD_REMOTE})
+        self.config = testing.Config({'git_nodes': GOOD_REMOTE})
 
     def setUp(self):
         storage = driver.fetch(self.scheme)
@@ -93,45 +93,45 @@ class TestWriteStreaming(object):
 
 def _set_up_with_config(config):
     config = testing.Config(config)
-    d = testing.Driver(scheme='elliptics',
+    d = testing.Driver(scheme='git',
                        config=config)
     d.setUp()
     return d
 
 
 @tools.raises(exceptions.ConfigError)
-def test_elliptics_no_nodes_conf():
+def test_git_no_nodes_conf():
     _set_up_with_config({})
 
 
 @tools.raises(exceptions.ConfigError)
-def test_elliptics_wrong_nodes_type_conf():
-    _set_up_with_config({'elliptics_nodes': 1111111})
+def test_git_wrong_nodes_type_conf():
+    _set_up_with_config({'git_nodes': 1111111})
 
 
 @tools.raises(exceptions.ConnectionError)
-def test_elliptics_bad_nodes_conf():
-    _set_up_with_config({'elliptics_nodes': [BAD_REMOTE]})
+def test_git_bad_nodes_conf():
+    _set_up_with_config({'git_nodes': [BAD_REMOTE]})
 
 
 @tools.raises(exceptions.ConfigError)
-def test_elliptics_zero_groups_conf():
-    _set_up_with_config({'elliptics_groups': []})
+def test_git_zero_groups_conf():
+    _set_up_with_config({'git_groups': []})
 
 @tools.raises(exceptions.ConfigError)
-def test_elliptics_invalid_verbosity_conf():
+def test_git_invalid_verbosity_conf():
     groups = [1, 2, 3]
-    _set_up_with_config({'elliptics_groups': groups,
-                         'elliptics_nodes': GOOD_REMOTE,
-                         'elliptics_verbosity': 'blabla'})
+    _set_up_with_config({'git_groups': groups,
+                         'git_nodes': GOOD_REMOTE,
+                         'git_verbosity': 'blabla'})
 
-def test_elliptics_groups_conf():
+def test_git_groups_conf():
     groups = [1, 2, 3]
-    dr = _set_up_with_config({'elliptics_groups': groups,
-                              'elliptics_nodes': GOOD_REMOTE})
+    dr = _set_up_with_config({'git_groups': groups,
+                              'git_nodes': GOOD_REMOTE})
     assert sorted(dr._storage._session.groups) == sorted(groups)
 
     groups_as_string = "[1, 2,3]"
-    dr = _set_up_with_config({'elliptics_groups': groups_as_string,
-                              'elliptics_nodes': GOOD_REMOTE})
+    dr = _set_up_with_config({'git_groups': groups_as_string,
+                              'git_nodes': GOOD_REMOTE})
     assert sorted(dr._storage._session.groups) == sorted(groups)

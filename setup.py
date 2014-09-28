@@ -12,18 +12,17 @@ __copyright__ = 'Copyright 2014'
 __credits__ = []
 
 __license__ = 'Apache 2.0'
-__version__ = '0.1.0'
+__version__ = '0.0.1'
 __maintainer__ = 'Anton Tiurin'
 __email__ = 'noxiouz@yandex.ru'
 __status__ = 'Production'
 
-__title__ = 'docker-registry-driver-elliptics'
+__title__ = 'docker-registry-driver-git'
 __build__ = 0x000000
 
-__url__ = 'https://github.com/noxiouz/docker-registry-driver-elliptics'
-__description__ = 'Docker registry elliptics driver'
-d = 'https://github.com/noxiouz/docker-registry-driver-elliptics/archive/\
-master.zip'
+__url__ = 'https://github.com/pyotr777/docker-registry-driver-git'
+__description__ = 'Docker registry git driver'
+d = 'https://github.com/pyotr777/docker-registry-driver-git/archive/master.zip'
 
 setuptools.setup(
     name=__title__,
