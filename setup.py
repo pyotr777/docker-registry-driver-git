@@ -7,15 +7,15 @@ except ImportError:
     import distutils.core as setuptools
 
 
-__author__ = 'Anton Tiurin'
+__author__ = 'Peter Bryzgalov'
 __copyright__ = 'Copyright 2014'
 __credits__ = []
 
 __license__ = 'Apache 2.0'
 __version__ = '0.0.1'
-__maintainer__ = 'Anton Tiurin'
-__email__ = 'noxiouz@yandex.ru'
-__status__ = 'Production'
+__maintainer__ = __author__
+__email__ = 'peterbryz@yahoo.com'
+__status__ = 'Pre-Alpha'
 
 __title__ = 'docker-registry-driver-git'
 __build__ = 0x000000
