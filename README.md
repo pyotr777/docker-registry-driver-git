@@ -1,10 +1,7 @@
-# Docker registry elliptics driver
+# Docker registry git driver
 
-This is a [docker-registry backend driver](https://github.com/dotcloud/docker-registry/tree/master/depends/docker-registry-core) based on the [Elliptics](http://reverbrain.com/elliptics/) key-value storage.
+This is a [docker-registry backend driver](https://github.com/dotcloud/docker-registry/tree/master/depends/docker-registry-core).
 
-[![PyPI version][pypi-image]][pypi-url]
-[![Build Status][travis-image]][travis-url]
-[![Coverage Status](https://coveralls.io/repos/noxiouz/docker-registry-driver-elliptics/badge.png?branch=master)](https://coveralls.io/r/noxiouz/docker-registry-driver-elliptics?branch=master)
 ## Usage
 
 Assuming you have a working docker-registry and elliptics setup.

@@ -15,7 +15,7 @@
 # limitations under the License.
 
 """
-docker_registry.drivers.file
+docker_registry.drivers.git
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 This is a simple git based driver.
@@ -23,10 +23,19 @@ This is a simple git based driver.
 """
 
 import os
-import file
+import logging
+#import file
 from docker_registry.drivers import file
+from docker_registry.core import driver
+from docker_registry.core import exceptions
+from docker_registry.core import lru
 
-class Storage(driver.Base):
+logger = logging.getLogger(__name__)
+
+print str(file.Storage.supports_bytes_range)
+version = "0.03"
+
+class Storage(file.Storage):
 
     supports_bytes_range = True
 
@@ -34,38 +43,38 @@ class Storage(driver.Base):
         self._root_path = path or './tmp'
 
     def _init_path(self, path=None, create=False):
-        print("_init_path")
-        return file._init_path(path,create)
-
+        logger.info("init path (%s) %s",str(create),path)
+        return file.Storage._init_path(self,path,create)
     
     def get_content(self, path):
-    	print("get_content")
-        return file.get_content(path)
+    	print("get_content with path="+path)
+        logger.info("Git backend driver %s", version)
+        return file.Storage.get_content(self,path)
 
     def put_content(self, path, content):
         print("put_content")
-        return file.put_content(path,content)
+        return file.Storage.put_content(self,path,content)
 
     def stream_read(self, path, bytes_range=None):
         print("stream_read")
-        return file.stream_read(path,bytes_range)
+        return file.Storage.stream_read(self,path,bytes_range)
 
     def stream_write(self, path, fp):
         print("stream_read")
-        return file.stream_write(path,fp)
+        return file.Storage.stream_write(self,path,fp)
 
     def list_directory(self, path=None):
         print("list_directory")
-        return file.list_directory(path)
+        return file.Storage.list_directory(self,path)
 
     def exists(self, path):
        	print("exists")
-        return file.exists(path)
+        return file.Storage.exists(self,path)
 
     def remove(self, path):
         print("remove")
-        return file.remove(path)
+        return file.Storage.remove(self,path)
 
     def get_size(self, path):
         print("get_size")
-        return file.get_size(path)
+        return file.Storage.get_size(self,path)
