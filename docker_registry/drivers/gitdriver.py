@@ -15,6 +15,7 @@ import git as gitmodule
 import logging
 import tarfile
 import json
+import shutil 
 from docker_registry.drivers import file
 from docker_registry.core import driver
 from docker_registry.core import exceptions
@@ -23,16 +24,19 @@ from docker_registry.core import lru
 logger = logging.getLogger(__name__)
 
 print str(file.Storage.supports_bytes_range)
-version = "0.1.38f"
+version = "0.1.41"
 repositorylibrary = "repositories/library"
 
 class Storage(file.Storage):
 
     repo_path="/Users/peterbryzgalov/tmp/gitrepo"
+    gitcom = None # git object from gitmodule
+    repo = None  # repo object defined in gitmodule
     _root_path=None
     imageID = None
     image_name = None
     parentID = None
+    checked_commit = None  # ID of commit wich was last checked out into working dir
 
     def printSettings(self):
         logger.info("Class variables\n%s\n%s\n%s",self.imageID,self.image_name,self.parentID)
@@ -106,12 +110,15 @@ class Storage(file.Storage):
     # imageID:   ID of the image to store in Docker
     # imageName: Name of the image to store (as shown by docker images)
     # parentID:  ID of parent image
-    #
-    # Uses these variables:
-    # working_dir   temporary directory to extract image (and ancestors) files 
+    # working_dir:  temporary directory to extract image (and ancestors) files 
     #               and to create commit from it.
-    # TODO
-    def createCommit(self, imageID, image_name, parentID):
+    # storage_path: path to FS storage directory (defined in config.yml) with direcotries "images" and "repositories"
+    # imagetable: File with pairs imageID : commitID
+
+    def createCommit(self, imageID, image_name, parentID, working_dir, storage_path, imagetable):
+        
+        # FIND PARENT COMMIT
+        #
         # if parentID is None or parentID not found in imagetable (pairs of imageID:commitID)
         #   if root commit doesn't exist
         #       create root commit
@@ -119,15 +126,77 @@ class Storage(file.Storage):
         # else 
         #   find parent commit (commitID of image with parentID in imagetable)
         # store parent commit git branch name in parent_branch
+        #
+        # CHECKOUT PARENT COMMIT
+        #
         # checkout parent commit to working dir
+        #
+        # COPY AND UNTAR
+        #
         # overwrite _checksum, ancestry, json in working dir with _new contents_
         # untar new layer archive to working dir/layer directory overwriting duplicate files
+        #
+        # MAKE NEW COMMIT
+        #
         # add all files in working dir to git staging area (git add -A)
         # create git commit (git commit)
         # store git commit number in commitID
         # if imageName != parent_branch
         #   create new git branch "image_name" at commitID
         # store pair imageID:commitID in imagetable
+        
+        parent_commit=None # ID of parent commit
+        root_commit = None # ID of root commit in git repository
+
+        if root_commit is None:
+            root_commit = self.createRootCommit(working_dir)
+        if parentID is None:
+            parent_commit = root_commit
+        else:
+            parent_commit = self.getParentCommit(parentID,imagetable)
+
+        if parent_commit is None:
+            parent_commit = root_commit
+
+        if self.checked_commit != parent_commit:
+            self.checkOutCommit(parent_commit)
+            self.checked_commit = parent_commit
+
+        # Untar layer to working dir
+        dst_layer_path = os.path.join(working_dir,"layer")
+        if not os.path.exists(dst_layer_path):
+            print "crete path "+ dst_layer_path
+            os.makedirs(dst_layer_path)
+        layer_path = os.path.join(storage_path,"images",imageID,"layer") # Path to "layer" tar file
+        tar_members_num=self.untar(layer_path, dst_layer_path)
+
+        # Copy other files from storage to working_dir
+        filelist = ["_checksum","ancestry","json"]
+        srcdir = os.path.join(storage_path,"images",imageID)
+        dstdir = working_dir
+        for file in filelist:
+            srcfile = os.path.join(srcdir,file)
+            shutil.copy(srcfile,dstdir)
+
+        
+        # Need to put commit on branch with name image_name
+        # If branch "image_name" exists switch to it
+        if image_name in not self.repo.branches:
+            repo.create_head(image_name)
+        
+        repo.head.reference = image_name
+
+        # Make commit
+        self.gitcom.add("-A")
+        self.gitcom.commit("-m","'Commit comment'")
+        commit = self.repo.head.commit
+
+        # Get commit ID
+        commitID = commit.hexsha
+        logger.info("Created commit %s on branch %s, parent commit %s", str(commitID),repo.head.reference,str(parent_commit.hexsha)
+
+        # Add record to image table
+        self.addRecord(imageID,commitID)
         return
 
 
@@ -169,8 +238,17 @@ class Storage(file.Storage):
                 f.close()
             gitcom.add("-A")
             gitcom.commit("-m","'Commit comment'")
-        else:
-            logger.info("Repository at %s is up to date",gitpath)
+            print "Repo " + str(repo)
+            if repo.head.commit is not None:
+                commit = repo.head.commit
+                print "Commit: ", commit.hexsha,"parent: ", commit.parents
+                print "Branches " 
+                for branch in repo.branches:
+                    print branch
+                print "Have master " + str("master" in repo.branches)
+                
+            else:
+                logger.info("Repository at %s is up to date",gitpath)
         return
 
     def getImageFromPath(self,path=None):
