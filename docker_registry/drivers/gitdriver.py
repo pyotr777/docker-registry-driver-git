@@ -16,7 +16,8 @@ import logging
 import tarfile
 import json
 import shutil 
-from docker_registry.drivers import file
+import csv
+from docker_registry.drivers import file 
 from docker_registry.core import driver
 from docker_registry.core import exceptions
 from docker_registry.core import lru
@@ -24,7 +25,7 @@ from docker_registry.core import lru
 logger = logging.getLogger(__name__)
 
 print str(file.Storage.supports_bytes_range)
-version = "0.1.41"
+version = "0.2.14"
 repositorylibrary = "repositories/library"
 
 class Storage(file.Storage):
@@ -37,9 +38,15 @@ class Storage(file.Storage):
     image_name = None
     parentID = None
     checked_commit = None  # ID of commit wich was last checked out into working dir
+    imagetable = "/Users/peterbryzgalov/tmp/git_imagetable.txt"
+    working_dir = "/Users/peterbryzgalov/tmp/git_tmp"
 
     def printSettings(self):
         logger.info("Class variables\n%s\n%s\n%s",self.imageID,self.image_name,self.parentID)
+        if self._root_path is not None and self.imageID is not None:
+            if self.storageContentReady(os.path.join(self._root_path,"images",self.imageID)):
+                self.createCommit(self.imageID,self.image_name,self.parentID,self.working_dir,self._root_path,self.imagetable )
+
 
     def __init__(self, path=None, config=None):
         logger.info("Current dir %s, init dir %s, version %s",os.getcwd(),path,version)
@@ -102,8 +109,8 @@ class Storage(file.Storage):
                 pass
         print("stream_write finished")
         if os.path.basename(path) == "layer":
-            self.makeGitRepo(path)        
-        self.printSettings()
+            self.imageID = self.getImageFromPath(path)
+        self.printSettings()        
         return
 
     # Creates commit using following parameters:
@@ -113,7 +120,9 @@ class Storage(file.Storage):
     # working_dir:  temporary directory to extract image (and ancestors) files 
     #               and to create commit from it.
     # storage_path: path to FS storage directory (defined in config.yml) with direcotries "images" and "repositories"
-    # imagetable: File with pairs imageID : commitID
+    # imagetable: File with pairs imageID : commitID 
+
+
 
     def createCommit(self, imageID, image_name, parentID, working_dir, storage_path, imagetable):
         
@@ -150,6 +159,7 @@ class Storage(file.Storage):
 
         if root_commit is None:
             root_commit = self.createRootCommit(working_dir)
+            print "Root commit " + str(root_commit)
         if parentID is None:
             parent_commit = root_commit
         else:
@@ -157,6 +167,7 @@ class Storage(file.Storage):
 
         if parent_commit is None:
             parent_commit = root_commit
+        print "Parent commit " + str(parent_commit)
 
         if self.checked_commit != parent_commit:
             self.checkOutCommit(parent_commit)
@@ -165,7 +176,7 @@ class Storage(file.Storage):
         # Untar layer to working dir
         dst_layer_path = os.path.join(working_dir,"layer")
         if not os.path.exists(dst_layer_path):
-            print "crete path "+ dst_layer_path
+            print "create path "+ dst_layer_path
             os.makedirs(dst_layer_path)
         layer_path = os.path.join(storage_path,"images",imageID,"layer") # Path to "layer" tar file
         tar_members_num=self.untar(layer_path, dst_layer_path)
@@ -178,13 +189,19 @@ class Storage(file.Storage):
             srcfile = os.path.join(srcdir,file)
             shutil.copy(srcfile,dstdir)
 
-        
+        if self.repo is None:
+            self.initGitRepo(working_dir)
+
         # Need to put commit on branch with name image_name
         # If branch "image_name" exists switch to it
-        if image_name in not self.repo.branches:
-            repo.create_head(image_name)
-        
-        repo.head.reference = image_name
+        if image_name not in self.repo.branches:
+            branch=self.repo.create_head(image_name)
+            print "Created branch " + str(branch)
+            
+        #self.repo.head.reference = branch
+        self.repo.head.reference = image_name
+        self.repo.heads[image_name].checkout()            
+        print self.gitcom.status()
 
         # Make commit
         self.gitcom.add("-A")
@@ -193,10 +210,35 @@ class Storage(file.Storage):
 
         # Get commit ID
         commitID = commit.hexsha
-        logger.info("Created commit %s on branch %s, parent commit %s", str(commitID),repo.head.reference,str(parent_commit.hexsha)
+        parent_commitID=""
+        if parent_commit is not None:
+            parent_commitID = parent_commit.hexsha
+        logger.info("Created commit %s on branch %s, parent commit %s", str(commitID),self.repo.head.reference,str(parent_commitID))
 
         # Add record to image table
         self.addRecord(imageID,commitID)
+
+        # Store checked out commit reference
+        self.checked_commit = commit
+        return
+
+
+    # Init git repository
+    # Sets class variables "repo" and "gitcom".
+    def initGitRepo(self, path=None):
+        if path is None:
+            logger.info("Path is None in initGitRepo")
+            return        
+        if not os.path.exists(path):    
+            os.makedirs(path)
+
+        logger.info("Make git repo at %s",path)
+        self.repo = gitmodule.Repo.init(path)
+        config = self.repo.config_writer() 
+        config.set_value("user","name","Docker_git")
+        config.set_value("user","email","test@example.com")
+        self.gitcom=self.repo.git
+        
         return
 
 
@@ -221,8 +263,7 @@ class Storage(file.Storage):
         self.imageID = self.getImageFromPath(path)
         gitpath=os.path.join(self.repo_path,self.imageID)
         print str(gitmodule)
-        repo = gitmodule.Repo.init(gitpath)
-        print str(repo.is_dirty())
+        self.repo = gitmodule.Repo.init(gitpath)
         if True: #repo.is_dirty():
             logger.info("Create git repo in %s",gitpath)
             config = repo.config_writer() 
@@ -293,3 +334,59 @@ class Storage(file.Storage):
     def get_size(self, path):
         # logger.info("get_size %s",path)
         return file.Storage.get_size(self,path)
+
+    def createRootCommit(self,working_dir):
+        print "Creating root commit at "+working_dir
+        if not os.path.exists(working_dir):
+            os.makedirs(working_dir)
+        path = os.path.join(working_dir,"start")
+        with open(path, mode='wb') as f:
+            f.write("Git reporitory initialization")
+            f.close()
+        if self.gitcom is None:
+            self.initGitRepo(working_dir)
+        try:
+            self.gitcom.add("-A")
+            self.gitcom.commit("-m","'Root commit'")
+        except gitmodule.GitCommandError as expt:
+            print "Exception at git add and commit "+ str(expt)
+        commit = self.repo.head.commit
+        return commit
+
+    # Return commitID with imageID = parentID
+    def getParentCommit(self,parentID,imagetable):
+        if not os.path.exists(imagetable):
+            with open(imagetable, mode="w") as f:
+                f.write("")
+                f.close()
+        dict = {}
+        for image, commit in csv.reader(open(imagetable)):
+            dict[image] = commit 
+            if image==parentID:
+                return commit
+
+    # Adds record to imagetable imageID : commitID
+    def addRecord(self,imagetable, image, commit):
+        w = csv.writer(open(imagetable,"a"))
+        w.writerow([image,commit])
+
+    def storageContentReady(self,image_dir):
+        if self.imageID is None:
+            return False
+        if self.image_name is None:
+            return False
+        if self.parentID is None:
+            return False
+
+        filelist = ["_checksum","ancestry","json","layer"]
+        for file in filelist:
+            path = os.path.join(image_dir,file)
+            if not os.path.exists(path):
+                print "File yet not exists " + path
+                return False
+        return True
+
+    def checkOutCommit(self,commit):
+        # TODO checkout commitID
+
+        
