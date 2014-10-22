@@ -27,7 +27,7 @@ from docker_registry.core import lru
 logger = logging.getLogger(__name__)
 
 print str(file.Storage.supports_bytes_range)
-version = "0.3.13"
+version = "0.3.23"
 repositorylibrary = "repositories/library"
 imagesdirectory = "images/"
 
@@ -192,9 +192,9 @@ class Storage(file.Storage):
             print "Positioned on branch "+str(branch)
         elif image_name not in self.repo.branches:
             self.gitcom.branch(image_name,str(parent_commit))
-            self.gitcom.branch()
             branch=self.repo.heads[image_name]
-            print "Created branch " + str(branch)
+            print "Created branch " + str(branch) + " from commmit "+str(parent_commit)
+            self.gitcom.log(graph=True)
         else: 
             branch=self.repo.heads[image_name]
             print "Branch: "+branch
@@ -205,8 +205,13 @@ class Storage(file.Storage):
         #self.repo.head.reference = image_name
         print "Switched to "+ str(self.repo.head.reference)
         
+        print "Last checked out commit "+str(self.checked_commit)
         if self.checked_commit != parent_commit:
-            self.repo.heads[image_name].checkout()            
+            #if self.checked_commit is not None:
+            #    self.cleanDir(os.path.join(self.working_dir,"layer"))
+            #self.repo.heads[image_name].checkout()
+            #self.repo.head.reset()            
+            self.gitcom.checkout(image_name)
             print "Checked out branch "+image_name
         
 
@@ -404,4 +409,9 @@ class Storage(file.Storage):
         for commit in repo.iter_commits():
             if commitID == commit.hexsha:
                 return commit
+
+    def cleanDir(self,dir):
+        shutil.rmtree(dir)
+        os.makedirs(dir)
+        print "Directory ("+dir+") cleaned"
            
