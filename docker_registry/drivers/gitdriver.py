@@ -27,12 +27,12 @@ from docker_registry.core import lru
 logger = logging.getLogger(__name__)
 
 print str(file.Storage.supports_bytes_range)
-version = "0.3.29"
+version = "0.3.42a"
 repositorylibrary = "repositories/library"
 imagesdirectory = "images/"
 
 class bcolors:
-    HEADER = '\033[1;95m'
+    HEADER = '\033[0;35m'
     OKBLUE = '\033[0;34m'
     OKGREEN = '\033[0;32m'
     OKYELLOW= '\033[0;33m'
@@ -88,11 +88,9 @@ class Storage(file.Storage):
         logger.info("put_content at %s (%s)", path,str(content)[:150])
                
         if path.find(repositorylibrary) >= 0:
-            self.image_name = self.getImageFromPath(path)
-            print "Image name "+ self.image_name
+            self.image_name = self.getImageFromPath(path)            
         elif path.find(imagesdirectory) >= 0:
-            self.imageID = self.getImageFromPath(path)
-            print "Image ID "+self.imageID
+            self.imageID = self.getImageIDFromPath(path)            
         path = self._init_path(path, create=True)
         with open(path, mode='wb') as f:
             f.write(content)
@@ -136,12 +134,8 @@ class Storage(file.Storage):
     def createCommit(self, imageID, image_name, parentID, working_dir, storage_path, imagetable):
         
         # FIND PARENT COMMIT
-        #
-        # if parentID is None or parentID not found in imagetable (pairs of imageID:commitID)
-        #   if root commit doesn't exist
-        #       create root commit
-        #   parent commit is root commit
-        # else 
+        #        
+        # if parentID is not None
         #   find parent commit (commitID of image with parentID in imagetable)
         # store parent commit git branch name in parent_branch
         #
@@ -169,44 +163,41 @@ class Storage(file.Storage):
         
         print bcolors.OKBLUE+"create commit " +bcolors.ENDC
         print str(imageID) + " name:" + str(image_name)+" parent:" + str(parentID)
-        parent_commit=None # ID of parent commit        
+        
+        if self.repo is None:
+            self.initGitRepo(working_dir)
 
-        if self.root_commit is None:
-            self.root_commit = self.createRootCommit(working_dir)
-            print "Root commit " + str(self.root_commit)
-        if parentID is None:
-            parent_commit = self.root_commit
-        else:
+        parent_commit = None
+        branch = None
+        if parentID is not None:
             parent_commitID = self.getParentCommitID(parentID,imagetable)
             parent_commit = self.getCommit(self.repo,parent_commitID)
-
-        if parent_commit is None:
-            parent_commit = self.root_commit
-        print "Parent commit " + str(parent_commit)
+            print "Parent commit " + str(parent_commit)
 
         # CHECKOUT PARENT COMMIT 
         # Need to put commit on branch with name image_name
         # If branch "image_name" exists switch to it
-        if image_name is None:
-            branch=self.repo.head.reference
-            print "Positioned on branch "+str(branch)
-        elif image_name not in self.repo.branches:
-            self.newBranch(image_name,str(parent_commit))
-            branch=self.repo.heads[image_name]
-            print "Created branch " + str(branch) + " from commmit "+str(parent_commit)
-            print self.gitcom.logf(graph=True)
-        else: 
-            branch=self.repo.heads[image_name]
-            print "Branch: "+branch
-            
+        if parent_commit is not None:
+            if image_name is None:
+                branch=self.repo.head.reference
+                print "Positioned on branch "+str(branch)
+            elif image_name not in self.repo.branches:
+                self.newBranch(image_name,str(parent_commit))
+                branch=self.repo.heads[image_name]
+                print "Created branch " + str(branch) + " from commmit "+str(parent_commit)
+                print self.gitcom.logf(graph=True)
+            else: 
+                branch=self.repo.heads[image_name]
+                print "Branch: "+str(branch)
+                
         print "Last checked out commit "+str(self.checked_commit)
-        if self.checked_commit != parent_commit:
+        if parent_commit is not None and self.checked_commit != parent_commit:
             self.checkoutBranch(image_name)
             print "Checked out branch "+image_name
-        else:
+            self.checked_commit = parent_commit
+        elif branch is not None:
             self.repo.head.reference = branch      
-
-        self.checked_commit = parent_commit
+        
         print self.gitcom.status()
 
         # COPY AND UNTAR
@@ -228,8 +219,7 @@ class Storage(file.Storage):
             srcfile = os.path.join(srcdir,file)
             shutil.copy(srcfile,dstdir)
 
-        if self.repo is None:
-            self.initGitRepo(working_dir)
+        
 
         print "New files copied to "+working_dir
 
@@ -238,6 +228,14 @@ class Storage(file.Storage):
 
         # Tag commit
         self.repo.create_tag(imageID[:11])
+
+        # Check that we have branch with image name 
+        if image_name not in self.repo.branches:
+            self.newBranch(image_name)
+            branch=self.repo.heads[image_name]
+            self.repo.head.reference = branch 
+            print "Created branch " + str(branch) 
+            print self.gitcom.logf(graph=True)
 
         # Get commit ID
         commitID = commit.hexsha
@@ -274,12 +272,30 @@ class Storage(file.Storage):
         return
 
     def getImageFromPath(self,path=None):
+        # path should be ...reposiroties/library/imagename/something
+        splitpath=os.path.split(path) # should be [".../imagename","something"]
+        tag_parts = None
+        if splitpath[1].find("tag_") >=0:
+            # Even if image name is already set change it, because we have a tag for the image name
+            tag_parts="."+splitpath[1].split("_")[1]
+        else:
+            # If image name is already set, don't change it (if we have no tag for image name)
+            if self.image_name is not None:
+                return self.image_name
+        splitpath=os.path.split(splitpath[0])
+        Image = splitpath[1]
+        if tag_parts is not None:
+            Image = Image + tag_parts
+        return Image
+
+    def getImageIDFromPath(self,path=None):
         # path should be ..../Image/something
         splitpath=os.path.split(path) # should be [".../Image","something"]
         splitpath=os.path.split(splitpath[0])
         Image = splitpath[1] 
         # print  "Image: "+ Image
         return Image
+
 
     # Extrace tar file source to dst directory
     def untar(self, source=None, dst=None):
@@ -329,24 +345,6 @@ class Storage(file.Storage):
         # logger.info("get_size %s",path)
         return file.Storage.get_size(self,path)
 
-    def createRootCommit(self,working_dir):
-        print "Creating root commit at "+working_dir
-        if not os.path.exists(working_dir):
-            os.makedirs(working_dir)
-        path = os.path.join(working_dir,"start")
-        with open(path, mode='wb') as f:
-            f.write("Git reporitory initialization")
-            f.close()
-        if self.gitcom is None:
-            self.initGitRepo(working_dir)
-        try:
-            self.gitcom.add("-A")
-            self.gitcom.commit("-m","'Root commit'")
-        except gitmodule.GitCommandError as expt:
-            print "Exception at git add and commit "+ str(expt)
-        commit = self.repo.head.commit
-        return commit
-
     # Return commitID with imageID = parentID
     def getParentCommitID(self,parentID,imagetable):
         if not os.path.exists(imagetable):
@@ -365,6 +363,8 @@ class Storage(file.Storage):
         w.writerow([image,commit])
 
     def storageContentReady(self,image_dir):
+        if self.image_name is None:
+            return False
         print bcolors.OKYELLOW+"checking "+image_dir+bcolors.ENDC
         self.parentID = None
         filelist = ["_checksum","ancestry","json","layer"]
@@ -410,9 +410,13 @@ class Storage(file.Storage):
             print "Exception at git add and commit "+ str(expt)
         return self.repo.head.commit
 
-    def newBranch(self,branch_name,commitID):
-        self.gitcom.branch(branch_name,commitID)
-        print "Created branch "+branch_name+ " at " + commitID
+    def newBranch(self,branch_name,commitID=None):
+        if commitID is not None:
+            self.gitcom.branch(branch_name,commitID)
+            print "Created branch "+branch_name+ " at " + commitID
+        else:
+            self.gitcom.branch(branch_name)
+            print "New branch "+branch_name
         print self.gitcom.branch()
 
     def checkoutBranch(self, branch_name):
