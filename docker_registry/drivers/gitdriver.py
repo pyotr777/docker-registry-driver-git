@@ -27,7 +27,7 @@ from docker_registry.core import lru
 logger = logging.getLogger(__name__)
 
 print str(file.Storage.supports_bytes_range)
-version = "0.3.42a"
+version = "0.3.48"
 repositorylibrary = "repositories/library"
 imagesdirectory = "images/"
 
@@ -86,9 +86,22 @@ class Storage(file.Storage):
     @lru.set
     def put_content(self, path, content):
         logger.info("put_content at %s (%s)", path,str(content)[:150])
-               
+          
         if path.find(repositorylibrary) >= 0:
-            self.image_name = self.getImageFromPath(path)            
+            if path.find("/tag_") >= 0:
+                # Have a tag for an image. 
+                # Check if image already saved
+                # Create new branch for it
+                self.image_name = self.getImageFromPath(path)              
+                print "Have new tag "+self.image_name
+                commitID = self.getCommitID(content,self.imagetable)
+                if commitID is not None:                    
+                    print bcolors.HEADER+"Have a new tag "+self.image_name+" for saved image "+commitID+bcolors.ENDC                    
+                    branch=self.newBranch(self.image_name,commitID)                                
+                    print self.gitcom.branch()
+                    self.image_name = None
+            else:
+                self.image_name = self.getImageFromPath(path)            
         elif path.find(imagesdirectory) >= 0:
             self.imageID = self.getImageIDFromPath(path)            
         path = self._init_path(path, create=True)
@@ -170,7 +183,7 @@ class Storage(file.Storage):
         parent_commit = None
         branch = None
         if parentID is not None:
-            parent_commitID = self.getParentCommitID(parentID,imagetable)
+            parent_commitID = self.getCommitID(parentID,self.imagetable)
             parent_commit = self.getCommit(self.repo,parent_commitID)
             print "Parent commit " + str(parent_commit)
 
@@ -182,8 +195,7 @@ class Storage(file.Storage):
                 branch=self.repo.head.reference
                 print "Positioned on branch "+str(branch)
             elif image_name not in self.repo.branches:
-                self.newBranch(image_name,str(parent_commit))
-                branch=self.repo.heads[image_name]
+                branch=self.newBranch(image_name,str(parent_commit))
                 print "Created branch " + str(branch) + " from commmit "+str(parent_commit)
                 print self.gitcom.logf(graph=True)
             else: 
@@ -231,8 +243,7 @@ class Storage(file.Storage):
 
         # Check that we have branch with image name 
         if image_name not in self.repo.branches:
-            self.newBranch(image_name)
-            branch=self.repo.heads[image_name]
+            branch=self.newBranch(image_name)            
             self.repo.head.reference = branch 
             print "Created branch " + str(branch) 
             print self.gitcom.logf(graph=True)
@@ -345,8 +356,8 @@ class Storage(file.Storage):
         # logger.info("get_size %s",path)
         return file.Storage.get_size(self,path)
 
-    # Return commitID with imageID = parentID
-    def getParentCommitID(self,parentID,imagetable):
+    # Return commitID with imageID 
+    def getCommitID(self,imageID,imagetable):
         if not os.path.exists(imagetable):
             with open(imagetable, mode="w") as f:
                 f.write("")
@@ -354,8 +365,9 @@ class Storage(file.Storage):
         dict = {}
         for image, commit in csv.reader(open(imagetable)):
             dict[image] = commit 
-            if image==parentID:
+            if image==imageID:
                 return commit
+        return None
 
     # Adds record to imagetable imageID : commitID
     def addRecord(self,imagetable, image, commit):
@@ -418,6 +430,8 @@ class Storage(file.Storage):
             self.gitcom.branch(branch_name)
             print "New branch "+branch_name
         print self.gitcom.branch()
+        branch=self.repo.heads[branch_name]
+        return branch
 
     def checkoutBranch(self, branch_name):
         self.repo.heads[branch_name].checkout()
