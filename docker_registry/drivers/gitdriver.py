@@ -27,7 +27,7 @@ from docker_registry.core import lru
 logger = logging.getLogger(__name__)
 
 print str(file.Storage.supports_bytes_range)
-version = "0.3.23"
+version = "0.3.29"
 repositorylibrary = "repositories/library"
 imagesdirectory = "images/"
 
@@ -191,29 +191,20 @@ class Storage(file.Storage):
             branch=self.repo.head.reference
             print "Positioned on branch "+str(branch)
         elif image_name not in self.repo.branches:
-            self.gitcom.branch(image_name,str(parent_commit))
+            self.newBranch(image_name,str(parent_commit))
             branch=self.repo.heads[image_name]
             print "Created branch " + str(branch) + " from commmit "+str(parent_commit)
-            self.gitcom.log(graph=True)
+            print self.gitcom.logf(graph=True)
         else: 
             branch=self.repo.heads[image_name]
             print "Branch: "+branch
             
-        #branch.commit = parent_commit
-        print "On branch "+ str(self.repo.head.reference)
-        self.repo.head.reference = branch
-        #self.repo.head.reference = image_name
-        print "Switched to "+ str(self.repo.head.reference)
-        
         print "Last checked out commit "+str(self.checked_commit)
         if self.checked_commit != parent_commit:
-            #if self.checked_commit is not None:
-            #    self.cleanDir(os.path.join(self.working_dir,"layer"))
-            #self.repo.heads[image_name].checkout()
-            #self.repo.head.reset()            
-            self.gitcom.checkout(image_name)
+            self.checkoutBranch(image_name)
             print "Checked out branch "+image_name
-        
+        else:
+            self.repo.head.reference = branch      
 
         self.checked_commit = parent_commit
         print self.gitcom.status()
@@ -243,12 +234,7 @@ class Storage(file.Storage):
         print "New files copied to "+working_dir
 
         # MAKE NEW COMMIT
-        try:
-            self.gitcom.add("-A")
-            self.gitcom.commit("-m","'Commit comment'")            
-        except gitmodule.GitCommandError as expt:
-            print "Exception at git add and commit "+ str(expt)
-        commit = self.repo.head.commit
+        commit = self.makeCommit()
 
         # Tag commit
         self.repo.create_tag(imageID[:11])
@@ -259,7 +245,7 @@ class Storage(file.Storage):
         if parent_commit is not None:
             parent_commitID = parent_commit.hexsha
         logger.info("%sCreated commit %s on branch %s, parent commit %s %s", bcolors.HEADER, str(commitID),self.repo.head.reference,str(parent_commitID), bcolors.ENDC)
-        print self.gitcom.status()
+        print self.gitcom.logf(graph=True)
 
         # Add record to image table
         self.addRecord(self.imagetable,imageID,commitID)
@@ -405,6 +391,7 @@ class Storage(file.Storage):
         
         return True
 
+    # Returns commit object with ID = commitID
     def getCommit(self,repo,commitID):
         for commit in repo.iter_commits():
             if commitID == commit.hexsha:
@@ -414,4 +401,25 @@ class Storage(file.Storage):
         shutil.rmtree(dir)
         os.makedirs(dir)
         print "Directory ("+dir+") cleaned"
-           
+
+    def makeCommit(self):
+        try:
+            self.gitcom.add("-A")
+            self.gitcom.commit("-m","Comment")
+        except gitmodule.GitCommandError as expt:
+            print "Exception at git add and commit "+ str(expt)
+        return self.repo.head.commit
+
+    def newBranch(self,branch_name,commitID):
+        self.gitcom.branch(branch_name,commitID)
+        print "Created branch "+branch_name+ " at " + commitID
+        print self.gitcom.branch()
+
+    def checkoutBranch(self, branch_name):
+        self.repo.heads[branch_name].checkout()
+        print "Checked out "+branch_name
+        print self.gitcom.status()
+        path = os.path.join(self.working_dir,"layer")
+        if os.path.exists(path):
+            print os.listdir(path)
+               
