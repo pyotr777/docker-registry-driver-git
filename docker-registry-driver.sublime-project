@@ -1,34 +1,42 @@
 {
-    "folders":
-    [
-        {
-            "folder_exclude_patterns":
-            [
-                ".tox",
-                "*.egg-info",
-                "*.egg",
-                "*__pycache__",
-                "dist",
-                "build",
-                "tmp",
-                "tests/reports"
-            ],
-            "file_exclude_patterns":
-            [
-                "*.egg",
-                "*.sublime-workspace",
-                ".coverage"
-            ],
-            "path": "."
-        }
-    ],
-    "settings":
-    {
-        "rulers":
-        [
-            80
-        ],
-        "tab_size": 4,
-        "translate_tabs_to_spaces": true
-    }
+	"build_systems":
+	[
+		{
+			"name": "Anaconda Python Builder",
+			"selector": "source.python",
+			"shell_cmd": "python -u \"$file\""
+		}
+	],
+	"folders":
+	[
+		{
+			"file_exclude_patterns":
+			[
+				"*.egg",
+				"*.sublime-workspace",
+				".coverage"
+			],
+			"folder_exclude_patterns":
+			[
+				".tox",
+				"*.egg-info",
+				"*.egg",
+				"*__pycache__",
+				"dist",
+				"build",
+				"tmp",
+				"tests/reports"
+			],
+			"path": "."
+		}
+	],
+	"settings":
+	{
+		"rulers":
+		[
+			80
+		],
+		"tab_size": 4,
+		"translate_tabs_to_spaces": true
+	}
 }
