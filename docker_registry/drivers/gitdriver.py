@@ -27,7 +27,7 @@ from docker_registry.core import lru
 logger = logging.getLogger(__name__)
 
 print str(file.Storage.supports_bytes_range)
-version = "0.4.10b"
+version = "0.4.20"
 repositorylibrary = "repositories/library"
 imagesdirectory = "images/"
 
@@ -141,6 +141,7 @@ class gitRepo():
     storage_path = None  # Path to layer tar with 
     checked_commit = None  # ID of commit wich was last checked out into working dir
     last_checked_imageID = None
+    ID_nums = 12 # Number of digits to store in ImageID
 
     #root_commit = None  # ID of root commit in git repository
 
@@ -185,7 +186,16 @@ class gitRepo():
             splitpath=os.path.split(path) # should be [".../imagename","something"]
             self.image_name = os.path.split(splitpath[0])[1]            
             if splitpath[1].find("tag_") >=0:
-                self.image_tag = splitpath[1].split("_")[1]            
+                self.image_tag = splitpath[1].split("_")[1]
+                if content is not None:
+                    commitID = self.getCommitID(content,self.imagetable)
+                    print bcolors.OKBLUE + "image ID " + content[:self.ID_nums] + " commitID "+str(commitID)+bcolors.ENDC
+                    if commitID is not None:
+                        # New branch with image name
+                        branch_name = self.makeBranchName()
+                        branch= self.newBranch(branch_name,commitID)
+                        print "Updated branch "+ str(branch)
+                        self.image_tag = None
         elif path.find(imagesdirectory) >= 0:            
             self.getImageIDFromPath(path) # should be ["images/ImageID","something"]
         self.checkSettings()
@@ -229,6 +239,20 @@ class gitRepo():
             if self.imageID is None or self.storage_path is None:
                 return False
             image_dir = os.path.join(self.storage_path,"images",self.imageID)
+
+        # Set parentID
+        try:
+            f = open(os.path.join(image_dir,"json"),"r")
+            image_json = json.load(f)
+            try:
+                self.parentID = image_json["parent"]
+            except KeyError:
+                pass
+            else:
+                print "parentID: "+self.parentID      
+        except IOError:
+            pass
+
         if self.image_name is None or self.image_tag is None or self.imageID is None:
             print "Class variables are not set yet"
             return False
@@ -243,15 +267,7 @@ class gitRepo():
             print bcolors.WARNING+"Wait for "+self.waitfile +" to be deleted"+bcolors.ENDC
             return False
         print bcolors.OKGREEN+image_dir+" has all files ready for creating commit"+bcolors.ENDC
-        f = open(os.path.join(image_dir,"json"),"r")
-        image_json = json.load(f)
-        # print "JSON "+str(image_json)
-        try:
-            self.parentID = image_json["parent"]
-        except KeyError:
-            pass
-        else:
-            print "parentID: "+self.parentID        
+          
         return True
 
 
@@ -297,9 +313,7 @@ class gitRepo():
         # store pair imageID:commitID in imagetable
         
         print bcolors.OKBLUE+"create commit " +bcolors.ENDC
-        branch_name = self.image_name
-        if self.image_tag is not None:
-            branch_name += "."+self.image_tag
+        branch_name = self.makeBranchName()        
         print str(self.imageID) + " branch:" + branch_name+" parent:" + str(self.parentID)
         
         if self.repo is None:
@@ -310,6 +324,7 @@ class gitRepo():
         branch = None
         if self.parentID is not None:
             parent_commitID = self.getCommitID(self.parentID,self.imagetable)
+            print "Parent commitID " + parent_commitID
             parent_commit = self.getCommit(parent_commitID)
             print "Parent commit " + str(parent_commit)
 
@@ -366,7 +381,7 @@ class gitRepo():
         commit = self.makeCommit()
 
         # Tag commit
-        self.repo.create_tag(self.imageID[:12])
+        self.repo.create_tag(self.imageID[:self.ID_nums])
 
         # Check that we have branch with image name
         if branch_name not in self.repo.branches:
@@ -399,6 +414,7 @@ class gitRepo():
         #print "Tar members # : "+ str(len(tar_members))
         #print tar_members[0:150]
         IOErrors = False
+        OSErrors = False
         if (len(tar_members) > 1):
             members = tar.getmembers()
             for member in members:
@@ -408,9 +424,11 @@ class gitRepo():
                 except IOError as expt:
                     IOErrors = True
                 except OSError as expt:
-                    print "OSError "+str(expt)
+                    OSErrors = True
         if (IOErrors):
             print "Had some IOErrors"
+        if (OSErrors):
+            print "Had some OSErrors"
         tar.close()
         return len(tar_members)
 
@@ -425,18 +443,27 @@ class gitRepo():
             with open(imagetable, mode="w") as f:
                 f.write("")
                 f.close()
-        dict = {}
+            return None
         for image, commit in csv.reader(open(imagetable)):
-            dict[image] = commit
             if image==imageID:
-                return commit
+                # print "Found commit "+commit
+                return commit            
         return None
     
     # Returns commit object with ID = commitID
     def getCommit(self,commitID):
-        for commit in self.repo.iter_commits():
-            if commitID == commit.hexsha:
-                return commit
+        print "Search commit "+commitID
+        current_branch = self.repo.head.reference
+        # self.repo.iter_commits() returns only commits on current branch
+        # Loop through all branches
+        for branch in self.repo.branches:
+            if self.repo.head.reference != branch:
+                self.repo.head.reference = branch
+            for commit in self.repo.iter_commits():
+                print commit.hexsha
+                if commitID == commit.hexsha:
+                    self.repo.head.reference = current_branch
+                    return commit
 
     def cleanDir(self, dir):
         shutil.rmtree(dir)
@@ -453,8 +480,17 @@ class gitRepo():
 
     def newBranch(self,branch_name,commitID=None):
         if commitID is not None:
-            self.gitcom.branch(branch_name,commitID)
-            print "Created branch "+branch_name+ " at " + commitID
+            if branch_name not in self.repo.branches:
+                self.gitcom.branch(branch_name,commitID)
+                print "Created branch "+branch_name+ " at " + commitID
+            else :
+                # Force branch to point to commit 
+                if self.repo.head.reference != branch_name:
+                    try:
+                        self.gitcom.branch(branch_name,commitID,f=True)
+                        print "Forced branch "+branch_name+" to point to "+ commitID
+                    except gitmodule.GitCommandError as expt:
+                        print "Exception at git checkout "+ str(expt)
         else:
             self.gitcom.branch(branch_name)
             print "New branch "+branch_name
@@ -469,3 +505,12 @@ class gitRepo():
         path = os.path.join(self.working_dir,"layer")
         if os.path.exists(path):
             print os.listdir(path)
+
+    def makeBranchName(self):
+        if self.image_name is None:
+            return None
+        if self.image_name.find(".") > 0 or self.image_tag is None:
+            return self.image_name
+        else:
+            return self.image_name + "." + self.image_tag
+
