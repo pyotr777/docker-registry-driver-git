@@ -19,18 +19,22 @@ import tarfile
 import json
 import shutil
 import csv
+import re
 from docker_registry.drivers import file
-from docker_registry.core import driver
+# from docker_registry.core import driver   # Inheritance: driver.Base --> file --> gitdriver
 from docker_registry.core import exceptions
 from docker_registry.core import lru
 
 logger = logging.getLogger(__name__)
 
 print str(file.Storage.supports_bytes_range)
-version = "0.4.20"
-repositorylibrary = "repositories/library"
+version = "0.4.26g"
+repositorylibrary = "repositories/library/"
 imagesdirectory = "images/"
-
+#
+# File storage driver stores information in two directories: images/ and repositories/.
+# IMPORTANT: In git repository only contents of images/imageID/ are stored. 
+#
 
 class bcolors:
     HEADER = '\033[0;35m'
@@ -47,13 +51,17 @@ class Storage(file.Storage):
 
     storage_path = None
     gitrepo = None
+    valid_imageID = "[0-9a-f]{64}"
+    imageID_pattern = None
 
     def __init__(self, path=None, config=None):
         logger.info("Current dir %s, init dir %s, version %s",os.getcwd(),path,version)
         self._root_path = path or "./tmp/registry"
         self.gitrepo = gitRepo()
+        self.imageID_pattern = re.compile(self.valid_imageID)
 
     def _init_path(self, path=None, create=False):
+        print("_init_path "+path)
         path = os.path.join(self._root_path, path) if path else self._root_path
         if create is True:
             dirname = os.path.dirname(path)
@@ -62,9 +70,42 @@ class Storage(file.Storage):
         return path
     
     def get_content(self, path):
-        #print("get_content with path="+path)
-        #logger.info("Git backend driver %s", version)
-        return file.Storage.get_content(self,path)
+        print("get_content with path="+path)
+        logger.info("Git backend driver %s", version)
+        # If read from repositories: ...reposiroties/library/imagename/something
+        # Use file.py backend and to read from Storage
+        if path.find(repositorylibrary) >= 0:
+            d=file.Storage.get_content(self,path)
+            if self.gettingImageID(path):
+                # If we have imageID we can checkout contents of git repo to working dir
+                imageID=self.getImageID(d)
+                if imageID is not None:
+                    self.gitRepo.checkoutImage(imageID)
+        else:
+            # TODO Rewrite to use gitdriver backend to read contents from working dir            
+            d=file.Storage.get_content(self,path)
+        print "::",d,"::"
+        return d
+
+    # Return True if path end with /tag_something
+    def gettingImageID(self, path):
+        parts = os.path.split(path)
+        if parts[1] is not None and parts[1].find("_") > 0:
+            tparts = parts[1].split("_")
+            if tparts[0] == "tag":
+                return True
+            else:
+                print "Have "+parts[1] + " in gettingImageID"
+        return False
+
+    # Return Image ID or None if not in the parameter
+    def getImageID(self, s):
+        s = s.strip()
+        match=self.imageID_pattern.match(s)
+        print "Matching string "+ s+ ": "+str(match)
+        if match is not None and len(match.groups) > 0:
+            return match.group(0)
+        return None
 
     @lru.set
     def put_content(self, path, content):
@@ -76,6 +117,7 @@ class Storage(file.Storage):
         return path
 
     def stream_read(self, path, bytes_range=None):
+        # TODO rewrite to read layer from working_dir
         logger.info("stream_read %s", path)
         return file.Storage.stream_read(self, path, bytes_range)
 
@@ -100,7 +142,7 @@ class Storage(file.Storage):
         return file.Storage.list_directory(self,path)
 
     def exists(self, path):
-        # logger.info("exists at %s",path)
+        logger.info("exists at %s",path)
         return file.Storage.exists(self,path)
 
     @lru.remove
@@ -117,7 +159,7 @@ class Storage(file.Storage):
         self.gitrepo.checkSettings()
 
     def get_size(self, path):
-        # logger.info("get_size %s",path)
+        logger.info("get_size %s",path)
         return file.Storage.get_size(self,path)
 
     
@@ -128,7 +170,7 @@ class Storage(file.Storage):
 class gitRepo():
 
     working_dir = "/Users/peterbryzgalov/tmp/git_tmp"
-    repo_path = "/Users/peterbryzgalov/tmp/gitrepo"
+    #repo_path = "/Users/peterbryzgalov/tmp/git_repo" Use working_dir instead
     imagetable = "/Users/peterbryzgalov/tmp/git_imagetable.txt"    
     waitfile="_inprogress"
     gitcom = None  # git object from gitmodule
@@ -147,8 +189,8 @@ class gitRepo():
 
     def __init__(self,repo_path=None):
         if repo_path is not None:
-            self.repo_path = repo_path
-        self.initGitRepo(repo_path)
+            self.working_dir = repo_path
+        self.initGitRepo(self.working_dir)
 
     def initSettings(self):
         self.imageID = None
@@ -323,7 +365,7 @@ class gitRepo():
         parent_commitID = 0
         branch = None
         if self.parentID is not None:
-            parent_commitID = self.getCommitID(self.parentID,self.imagetable)
+            parent_commitID = self.getCommitID(self.parentID)
             print "Parent commitID " + parent_commitID
             parent_commit = self.getCommit(parent_commitID)
             print "Parent commit " + str(parent_commit)
@@ -391,7 +433,14 @@ class gitRepo():
             print self.gitcom.logf(graph=True)
 
         # Get commit ID
-        commitID = commit.hexsha
+        try:
+            commitID = commit.hexsha
+        except AttributeError:
+            print "Error getting commit ID ", commit
+            commit = self.repo.head.reference.commit
+            print "HEAD is poiting to commit ", commit
+            commitID = commit.hexsha
+            print "CommitID="+str(commitID)
         parent_commitID=""
         if parent_commit is not None:
             parent_commitID = parent_commit.hexsha
@@ -438,7 +487,9 @@ class gitRepo():
         w.writerow([image,commit])
 
     # Return commitID with imageID
-    def getCommitID(self,imageID,imagetable):
+    def getCommitID(self,imageID,imagetable = None):
+        if imagetable is None:
+            imagetable = self.imagetable
         if not os.path.exists(imagetable):
             with open(imagetable, mode="w") as f:
                 f.write("")
@@ -473,10 +524,11 @@ class gitRepo():
     def makeCommit(self):
         try:
             self.gitcom.add("-A")
-            self.gitcom.commit("-m","Comment")
+            out=self.gitcom.commit("-m","Comment")
+            # print "Creating commit: "+ out
         except gitmodule.GitCommandError as expt:
             print "Exception at git add and commit "+ str(expt)
-        return self.repo.head.commit
+        return self.repo.head.reference.commit
 
     def newBranch(self,branch_name,commitID=None):
         if commitID is not None:
@@ -505,6 +557,19 @@ class gitRepo():
         path = os.path.join(self.working_dir,"layer")
         if os.path.exists(path):
             print os.listdir(path)
+
+    def checkoutImage(self, imageID):
+        self.checkoutCommit(self.getCommitID(imageID))
+
+    def checkoutCommit(self,commitID):
+        print "Checking out commit "+commitID+" into " + self.working_dir
+        try:
+            out=self.gitcom.checkout(commitID)
+            print out
+        except gitmodule.GitCommandError as expt:
+            print "Exception at git checkout "+ str(expt)
+            return None
+        return out
 
     def makeBranchName(self):
         if self.image_name is None:
