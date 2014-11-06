@@ -28,7 +28,7 @@ from docker_registry.core import lru
 logger = logging.getLogger(__name__)
 
 print str(file.Storage.supports_bytes_range)
-version = "0.5.03a"
+version = "0.5.04"
 repositorylibrary = "repositories/library/"
 imagesdirectory = "images/"
 #
@@ -152,8 +152,7 @@ class Storage(file.Storage):
                     if not buf:
                         break
                     yield buf
-            print "Read finished"
-            self.gitrepo.cleanDir()
+            print "Read finished"            
         except IOError:
             raise exceptions.FileNotFoundError('%s is not there' % path)
 
@@ -649,7 +648,7 @@ class gitRepo():
         print "Checking out commit "+commitID+" into " + self.working_dir
         try:
             os.chdir(self.working_dir)
-            out=self.gitcom.checkout(commitID)
+            out=self.gitcom.checkout(commitID,f=True)
             self.checked_commit = commitID
             # print out
         except gitmodule.GitCommandError as expt:
@@ -683,7 +682,7 @@ class gitRepo():
     # Argument path is a relative path to a file inside images directory
     def prepareLayerTar(self,path):
         # layer_path = os.path.join(self.working_dir,"layer")
-        tar_path = os.path.join(self.working_dir,"layer.tar")
+        tar_path = os.path.join(self.working_dir,"layer","layer.tar")
         if os.path.exists(tar_path):
             return tar_path
         self.prepareCheckout(path)        
@@ -702,8 +701,14 @@ class gitRepo():
         print "Different files list: "
         items = out.split("\n")
         print items
+        # Move into layer directory
+        os.chdir(os.path.join(self.working_dir,"layer"))
         tar = tarfile.open(tar_path,"w")
+
         for item in items:
+            if item.find("layer/") != 0:
+                continue
+            item = item[6:]
             if len(item) < 1:
                 continue
             try:
@@ -711,8 +716,10 @@ class gitRepo():
             except OSError as ex:
                 print item + " "+ str(ex)
         tar.close()
-        print "Tar created "+ tar_path
-        return tar_path
+        new_tar_path = os.path.join(self.working_dir,"layer.tar")
+        shutil.move(tar_path,new_tar_path)
+        print "Tar created "+ new_tar_path
+        return new_tar_path
 
 
         
