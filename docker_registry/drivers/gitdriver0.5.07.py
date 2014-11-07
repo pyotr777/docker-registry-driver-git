@@ -8,9 +8,6 @@ docker_registry.drivers.gitdriver
 
 This is a basic git based driver.
 
-File storage driver stores information in two directories: images/ and repositories/.
-gitdriver stores information from images/ directory in git repository.
-
 """
 
 import os
@@ -31,12 +28,13 @@ from docker_registry.core import lru
 logger = logging.getLogger(__name__)
 
 print str(file.Storage.supports_bytes_range)
-version = "0.6.01"
-repository_path = "repositories/library/"
-images_path = "images/"
-working_dir = "/Users/peterbryzgalov/tmp/git_tmp"
-imagetable = "/Users/peterbryzgalov/tmp/git_imagetable.txt"    
-waitfile="_inprogress"
+version = "0.5.07"
+repositorylibrary = "repositories/library/"
+imagesdirectory = "images/"
+#
+# File storage driver stores information in two directories: images/ and repositories/.
+# IMPORTANT: In git repository only contents of images/imageID/ are stored. 
+#
 
 class bcolors:
     HEADER = '\033[0;35m'
@@ -75,7 +73,7 @@ class Storage(file.Storage):
         logger.info("Git backend driver %s", version)
         # If read from repositories: ...reposiroties/library/imagename/something
         # Use file.py backend and to read from Storage
-        if path.find(repository_path) >= 0:
+        if path.find(repositorylibrary) >= 0:
             print("get_content from repositories "+path)
             d=file.Storage.get_content(self,path)
             if self.gettingImageID(path):
@@ -238,7 +236,7 @@ class Storage(file.Storage):
         return False
 
     def imagesDir(self,path):
-        return path.find(images_path) >= 0
+        return path.find(imagesdirectory) >= 0
     
                
 
@@ -299,7 +297,7 @@ class gitRepo():
         if path is None:
             print bcolors.INVERTED+"path is None in getInfoFromPath"+bcolors.ENDC
         # path should be ...reposiroties/library/imagename/something
-        if path.find(repository_path) >= 0:
+        if path.find(repositorylibrary) >= 0:
             print bcolors.OKBLUE+"get info from "+ path+bcolors.ENDC
             splitpath=os.path.split(path) # should be [".../imagename","something"]
             self.image_name = os.path.split(splitpath[0])[1]            
@@ -314,14 +312,14 @@ class gitRepo():
                         branch= self.newBranch(branch_name,commitID)
                         print "Updated branch "+ str(branch)
                         self.image_tag = None
-        elif path.find(images_path) >= 0:            
+        elif path.find(imagesdirectory) >= 0:            
             self.imageID = self.getImageIDFromPath(path) # should be ["images/ImageID","something"]
         self.checkSettings()
 
     # called from getInfoFromPath()
     def getImageIDFromPath(self,path=None):
         # path should be ..../Image/something
-        if path.find(images_path) < 0 :
+        if path.find(imagesdirectory) < 0 :
             return
         print "path="+path+"  in getImageIDFromPath"
         splitpath=os.path.split(path) # should be ["../images/ImageID","something"]
