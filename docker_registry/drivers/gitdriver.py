@@ -28,7 +28,7 @@ from docker_registry.core import lru
 logger = logging.getLogger(__name__)
 
 print str(file.Storage.supports_bytes_range)
-version = "0.5.04"
+version = "0.5.05a"
 repositorylibrary = "repositories/library/"
 imagesdirectory = "images/"
 #
@@ -84,8 +84,8 @@ class Storage(file.Storage):
         else:
             # Presumably read from imges directory 
             print(bcolors.HEADER+"get_content from images "+path+bcolors.ENDC)
-            # TODO Rewrite to use gitdriver backend to read contents from working dir
-            path = self.prepareCheckout(path)
+            if self.needLayer(path):
+                path = self.prepareCheckout(path)
             print "Reading from "+ str(path)
             try:
                 with open(path, mode='rb') as f:
@@ -183,7 +183,9 @@ class Storage(file.Storage):
             if self.needLayer(path):
                 # change layer to layer.tar
                 path = path + ".tar"
-            path = self.prepareCheckout(path)
+                path = self.prepareCheckout(path)
+            else:
+                path = self._init_path(path)
             return os.path.exists(path)    
         else :
             # Presumably read from repositories directory
