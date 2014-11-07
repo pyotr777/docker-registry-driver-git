@@ -30,13 +30,15 @@ from docker_registry.core import lru
 
 logger = logging.getLogger(__name__)
 
-print str(file.Storage.supports_bytes_range)
-version = "0.6.01"
+version = "0.6.03f"
+_root_dir = "/Users/peterbryzgalov/tmp/"
 repository_path = "repositories/library/"
 images_path = "images/"
-working_dir = "/Users/peterbryzgalov/tmp/git_tmp"
-imagetable = "/Users/peterbryzgalov/tmp/git_imagetable.txt"    
+working_dir = "git_working"
+storage_dir = "git_storage"
+imagetable = "git_imagetable.txt"    
 waitfile="_inprogress"
+layer_dir = "layer_dir"
 
 class bcolors:
     HEADER = '\033[0;35m'
@@ -54,79 +56,57 @@ class Storage(file.Storage):
     gitrepo = None
     valid_imageID = "[0-9a-f]{64}"
     imageID_pattern = None
+    layer_size = 0 # store size of layer tar
 
     def __init__(self, path=None, config=None):
+        global working_dir, storage_dir
+        logger.info("Git backend driver %s initialisation", version)
         logger.info("Current dir %s, init dir %s, version %s",os.getcwd(),path,version)
-        self._root_path = path or "./tmp/registry"
+        _root_dir = path or "./tmp"        
+        working_dir = os.path.join(_root_dir,working_dir)
+        storage_dir = os.path.join(_root_dir,storage_dir)
         self.gitrepo = gitRepo()
         self.imageID_pattern = re.compile(self.valid_imageID)
 
     def _init_path(self, path=None, create=False):
-        rpath = self.gitrepo.working_dir if self.imagesDir(path) else self._root_path
-        path = os.path.join(rpath, path) if path else rpath
-        print(bcolors.OKBLUE+"_init_path "+path+bcolors.ENDC)
+        global working_dir, storage_dir        
+        self.gitrepo.getInfoFromPath(path)
+        # Define path prefix: working dir (for images/) or storage_dir
+        if self.imagesDir(path):
+            if path is None:
+                return None
+            pre_path = working_dir
+            basename = os.path.basename(path)
+            path = os.path.join(pre_path, basename)
+        else:
+            pre_path = storage_dir
+            path = os.path.join(pre_path, path) if path else pre_path
+        # print(bcolors.OKBLUE+"_init_path "+path+bcolors.ENDC)
         if create is True:
             dirname = os.path.dirname(path)
             if not os.path.exists(dirname):
                 os.makedirs(dirname)
         return path
     
-    def get_content(self, path):        
-        logger.info("Git backend driver %s", version)
+    @lru.get
+    def get_content(self, path):                
+        path = self._init_path(path)
         # If read from repositories: ...reposiroties/library/imagename/something
         # Use file.py backend and to read from Storage
-        if path.find(repository_path) >= 0:
-            print("get_content from repositories "+path)
-            d=file.Storage.get_content(self,path)
-            if self.gettingImageID(path):
-                # If we have imageID we can checkout contents of git repo to working dir
-                imageID=self.getImageID(d)
-                if imageID is not None:
-                    self.gitrepo.checkoutImage(imageID)
-        else:
-            # Presumably read from imges directory 
-            print(bcolors.HEADER+"get_content from images "+path+bcolors.ENDC)
-            if self.needLayer(path):
-                path = self.prepareCheckout(path)
-            print "Reading from "+ str(path)
-            try:
-                with open(path, mode='rb') as f:
-                    d = f.read()
-            except Exception:
-                raise exceptions.FileNotFoundError('%s is not there' % path)
+        print bcolors.OKBLUE+"get_content from "+path + bcolors.ENDC
+        d=file.Storage.get_content(self,path)        
         return d
-
-    # Return True if path ends with /tag_something
-    def gettingImageID(self, path):
-        parts = os.path.split(path)
-        if parts[1] is not None and parts[1].find("_") > 0:
-            tparts = parts[1].split("_")
-            if tparts[0] == "tag":
-                return True
-            else:
-                print "Have "+parts[1] + " in gettingImageID"
-        return False
-
-    # Return Image ID or None if not in the parameter
-    def getImageID(self, s):
-        s = s.strip()
-        match=self.imageID_pattern.match(s)
-        print "Matching string "+ s+ ": "+str(match)
-        if match is not None and match.groups(0) is not None:
-            return match.group(0)
-        return None
 
     @lru.set
     def put_content(self, path, content):
-        logger.info("put_content at %s (%s)", path,str(content)[:150])
-        self.gitrepo.getInfoFromPath(path,content)
         path = self._init_path(path, create=True)
+        print bcolors.OKBLUE+"put_content at "+ path+ " "+ str(content)[:150] + bcolors.ENDC
         with open(path, mode='wb') as f:
             f.write(content)
         return path
 
     def stream_read(self, path, bytes_range=None):
-        path = self.gitrepo.prepareLayerTar(path)
+        path = self._init_path(path)
         print(bcolors.HEADER+" stream_read from "+ path+bcolors.ENDC)
         nb_bytes = 0
         total_size = 0
@@ -159,8 +139,8 @@ class Storage(file.Storage):
             raise exceptions.FileNotFoundError('%s is not there' % path)
 
     def stream_write(self, path, fp):
-        logger.info("stream_write %s (%s)", path, str(fp))
         path = self._init_path(path, create=True)
+        print bcolors.HEADER+"stream_write " + path+ bcolors.ENDC
         with open(path, mode='wb') as f:
             try:
                 while True:
@@ -170,33 +150,35 @@ class Storage(file.Storage):
                     f.write(buf)
             except IOError:
                 pass
-        print("stream_write finished")
-        self.gitrepo.getInfoFromPath(path)
+        self.layer_size = self.get_size(path)
+        print "stream_write finished "+str(self.layer_size)
         return
 
     def list_directory(self, path=None):
-        logger.info("list_directory %s",path)
-        return file.Storage.list_directory(self,path)
+        print "List "+path
+        prefix = ''
+        if path:
+            prefix = '%s/' % path
+        path = self._init_path(path)
+        exists = False
+        try:
+            for d in os.listdir(path):
+                exists = True
+                yield prefix + d
+        except Exception:
+            pass
+        if not exists:
+            raise exceptions.FileNotFoundError('%s is not there' % path)
 
     def exists(self, path):
-        logger.info("exists at %s",path)
-        if self.imagesDir(path):
-            # Read from images directory
-            if self.needLayer(path):
-                # change layer to layer.tar
-                path = path + ".tar"
-                path = self.prepareCheckout(path)
-            else:
-                path = self._init_path(path)
-            return os.path.exists(path)    
-        else :
-            # Presumably read from repositories directory
-            path = self._init_path(path)
-            return file.Storage.exists(self,path)
+        path = self._init_path(path)
+        print"exists at " +path
+        return os.path.exists(path)
 
     @lru.remove
-    def remove(self, path):
+    def remove(self, path):        
         path = self._init_path(path)
+        print "remove "+path
         if os.path.isdir(path):
             shutil.rmtree(path)
             return
@@ -208,11 +190,9 @@ class Storage(file.Storage):
         self.gitrepo.checkSettings()
 
     def get_size(self, path):
-        logger.info("get_size %s",path)
-        if self.needLayer(path):            
-            # change layer to layer.tar
-            path = path + ".tar"
-            path = self.gitrepo.prepareLayerTar(path)
+        path = self._init_path(path)
+        # logger.info("get_size %s",path)
+        
         try:
             print "Getting size of "+path
             size = os.path.getsize(path)
@@ -220,8 +200,32 @@ class Storage(file.Storage):
             return size
         except OSError as ex:
             print "Not found " + path
+            if self.needLayer(path):
+                print self.layer_size
+                return self.layer_size
             print ex
             raise exceptions.FileNotFoundError('%s is not there' % path)
+
+
+    # Return True if path ends with /tag_something
+    def gettingImageID(self, path):
+        parts = os.path.split(path)
+        if parts[1] is not None and parts[1].find("_") > 0:
+            tparts = parts[1].split("_")
+            if tparts[0] == "tag":
+                return True
+            else:
+                print "Have "+parts[1] + " in gettingImageID"
+        return False
+
+    # Return Image ID or None if not in the parameter
+    def getImageID(self, s):
+        s = s.strip()
+        match=self.imageID_pattern.match(s)
+        print "Matching string "+ s+ ": "+str(match)
+        if match is not None and match.groups(0) is not None:
+            return match.group(0)
+        return None
 
     # Check out imageID directory from gir tepository and
     # prepare layer as a tar archive.
@@ -246,9 +250,7 @@ class Storage(file.Storage):
 
 class gitRepo():
 
-    working_dir = "/Users/peterbryzgalov/tmp/git_tmp"
-    imagetable = "/Users/peterbryzgalov/tmp/git_imagetable.txt"    
-    waitfile="_inprogress"
+    
     gitcom = None  # git object from gitmodule
     repo = None  # repo object defined in gitmodule
 
@@ -264,9 +266,10 @@ class gitRepo():
     #root_commit = None  # ID of root commit in git repository
 
     def __init__(self,repo_path=None):
-        if repo_path is not None:
-            self.working_dir = repo_path
-        self.initGitRepo(self.working_dir)
+        global working_dir
+        if repo_path is None:
+            repo_path = working_dir
+        self.initGitRepo(repo_path)
 
     def initSettings(self):
         self.imageID = None
@@ -300,7 +303,7 @@ class gitRepo():
             print bcolors.INVERTED+"path is None in getInfoFromPath"+bcolors.ENDC
         # path should be ...reposiroties/library/imagename/something
         if path.find(repository_path) >= 0:
-            print bcolors.OKBLUE+"get info from "+ path+bcolors.ENDC
+            print "get info from "+ path
             splitpath=os.path.split(path) # should be [".../imagename","something"]
             self.image_name = os.path.split(splitpath[0])[1]            
             if splitpath[1].find("tag_") >=0:
@@ -323,7 +326,7 @@ class gitRepo():
         # path should be ..../Image/something
         if path.find(images_path) < 0 :
             return
-        print "path="+path+"  in getImageIDFromPath"
+        # print "path="+path+"  in getImageIDFromPath"
         splitpath=os.path.split(path) # should be ["../images/ImageID","something"]
         splitpath=os.path.split(splitpath[0])  # ["../images","ImageID"]
         if self.storage_path is None:
@@ -332,11 +335,13 @@ class gitRepo():
                 self.storage_path = storage_path
                 print bcolors.OKBLUE + "storage_path: "+ self.storage_path+bcolors.ENDC
         imageID = splitpath[1]
-        print  "Image ID: "+ imageID
+        # print  "Image ID: "+ imageID
         return imageID
 
     def checkSettings(self):
-        print bcolors.INVERTED+"imageID="+str(self.imageID)[:12]+" image_name="+str(self.image_name)+\
+        if self.imageID is not None:
+            print bcolors.INVERTED+"imageID="+str(self.imageID)[:12]+\
+                    " image_name="+str(self.image_name)+\
                     " image_tag="+str(self.image_tag)+bcolors.ENDC
         if self.imageID is not None:
             if self.storageContentReady():
@@ -379,10 +384,11 @@ class gitRepo():
     # Return parent commit ID of checked out commit in working_dir.
     # Read from json file in working_dir.
     def readJSON(self,field):
+        global working_dir
         # Set parentID
         parentID = None
         try:
-            f = open(os.path.join(self.working_dir,"json"),"r")
+            f = open(os.path.join(working_dir,"json"),"r")
             image_json = json.load(f)
             try:
                 parentID = image_json[field]
@@ -434,13 +440,14 @@ class gitRepo():
         # if imageName != parent_branch
         #   create new git branch "image_name" at commitID
         # store pair imageID:commitID in imagetable
-        
-        print bcolors.OKBLUE+"create commit " +bcolors.ENDC
+        global working_dir, layer_dir
+
+        print bcolors.HEADER+"Create commit " 
         branch_name = self.makeBranchName()        
-        print str(self.imageID) + " branch:" + branch_name+" parent:" + str(self.parentID)
+        print str(self.imageID) + " branch:" + branch_name+" parent:" + str(self.parentID)+bcolors.ENDC
         
         if self.repo is None:
-            self.initGitRepo(self.working_dir)
+            self.initGitRepo(working_dir)
 
         parent_commit = None
         parent_commitID = 0
@@ -477,29 +484,16 @@ class gitRepo():
         
         print self.gitcom.status()
 
-        # COPY AND UNTAR
-        print "Copy and untar"
-
-        # Untar layer to working dir
-        dst_layer_path = os.path.join(self.working_dir,"layer")
+        # UNTAR layer to working dir
+        dst_layer_path = os.path.join(working_dir,layer_dir)
         if not os.path.exists(dst_layer_path):
             print "create path "+ dst_layer_path
             os.makedirs(dst_layer_path)
-        layer_path = os.path.join(self.storage_path,"images",self.imageID,"layer") # Path to "layer" tar file
-        tar_members_num=self.untar(layer_path, dst_layer_path)
+        layer_path = os.path.join(working_dir,"layer") # Path to "layer" tar file
+        if os.path.exists(layer_path):
+            tar_members_num=self.untar(layer_path, dst_layer_path)
+            print "Untar "+str(tar_members_num)+" elements from "+layer_path+" to " + dst_layer_path
         
-        # Copy other files from storage to working_dir
-        filelist = ["_checksum","ancestry","json"]
-        srcdir = os.path.join(self.storage_path, "images",self.imageID)
-        dstdir = self.working_dir
-        for file_ in filelist:
-            srcfile = os.path.join(srcdir, file_)
-            shutil.copy(srcfile, dstdir)
-
-        
-
-        print "New files copied to "+self.working_dir
-
         # MAKE NEW COMMIT
         commit = self.makeCommit()
 
@@ -525,11 +519,11 @@ class gitRepo():
         parent_commitID=""
         if parent_commit is not None:
             parent_commitID = parent_commit.hexsha
-        logger.info("%sCreated commit %s on branch %s, parent commit %s %s", bcolors.HEADER, str(commitID),self.repo.head.reference,str(parent_commitID), bcolors.ENDC)
+        print bcolors.OKGREEN+"Created commit "+str(commitID)+" on branch "+str(self.repo.head.reference)+", parent commit "+str(parent_commitID)+bcolors.ENDC
         print self.gitcom.logf(graph=True)
 
         # Add record to image table
-        self.addRecord(self.imagetable,self.imageID,commitID)
+        self.addRecord(self.imageID,commitID)
 
         # Store checked out commit reference
         self.checked_commit = commit
@@ -551,32 +545,36 @@ class gitRepo():
                 #print member.name + " ["+str(member.size)+"] t="+str(member.type) + " m=" + str(int(member.mode))
                 try:
                     tar.extract(member,dst)
-                except IOError as expt:
+                except IOError:
                     IOErrors = True
-                except OSError as expt:
+                except OSError:
                     OSErrors = True
         if (IOErrors):
             print "Had some IOErrors"
         if (OSErrors):
             print "Had some OSErrors"
         tar.close()
+        os.remove(source)
         return len(tar_members)
 
     # Adds record to imagetable imageID : commitID
-    def addRecord(self,imagetable, image, commit):
-        w = csv.writer(open(imagetable,"a"))
-        w.writerow([image,commit])
+    def addRecord(self,image, commit):
+        global imagetable, _root_dir
+        imagetable_file = os.path.join(_root_dir,imagetable)
+        w = csv.writer(open(imagetable_file,"a"))
+        w.writerow([image,commit])        
 
     # Return commitID with imageID
-    def getCommitID(self,imageID,imagetable = None):
-        if imagetable is None:
-            imagetable = self.imagetable
-        if not os.path.exists(imagetable):
-            with open(imagetable, mode="w") as f:
+    def getCommitID(self,imageID,image_table = None):
+        global imagetable, _root_dir
+        if image_table is None:
+            image_table = os.path.join(_root_dir, imagetable)
+        if not os.path.exists(image_table):
+            with open(image_table, mode="w") as f:
                 f.write("")
                 f.close()
             return None
-        for image, commit in csv.reader(open(imagetable)):
+        for image, commit in csv.reader(open(image_table)):
             if image==imageID:
                 # print "Found commit "+commit
                 return commit            
@@ -597,18 +595,6 @@ class gitRepo():
                     self.repo.head.reference = current_branch
                     return commit
 
-    def cleanDir(self, dir=None):
-        ignore=(".git")
-        if dir is None:
-            dir = self.working_dir
-        for item in os.listdir(dir):
-            if item not in ignore:
-                if os.path.isfile(item):
-                    os.remove(item)
-                else:
-                    shutil.rmtree(item)
-        print "Directory ("+dir+") cleaned"
-
     def makeCommit(self):
         try:
             self.gitcom.add("-A")
@@ -616,6 +602,7 @@ class gitRepo():
             # print "Creating commit: "+ out
         except gitmodule.GitCommandError as expt:
             print "Exception at git add and commit "+ str(expt)
+        print "HEAD:"+str(self.repo.head.reference.commit)
         return self.repo.head.reference.commit
 
     def newBranch(self,branch_name,commitID=None):
@@ -689,7 +676,7 @@ class gitRepo():
     # Argument path is a relative path to a file inside images directory
     def prepareLayerTar(self,path):
         # layer_path = os.path.join(self.working_dir,"layer")
-        tar_path = os.path.join(self.working_dir,"layer","layer.tar")
+        tar_path = os.path.join(working_dir,"layer","layer.tar")
         if os.path.exists(tar_path):
             return tar_path
         self.prepareCheckout(path)        
