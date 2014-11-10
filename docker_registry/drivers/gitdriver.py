@@ -30,7 +30,7 @@ from docker_registry.core import lru
 
 logger = logging.getLogger(__name__)
 
-version = "0.6.04c"
+version = "0.6.04d"
 _root_dir = "/Users/peterbryzgalov/tmp/"
 repository_path = "repositories/library/"
 images_path = "images/"
@@ -40,7 +40,7 @@ imagetable = "git_imagetable.txt"
 waitfile="_inprogress"
 layer_dir = "layer_dir"
 
-class bcolors:
+class bcolorsbak:
     HEADER = '\033[0;35m'
     OKBLUE = '\033[0;34m'
     OKGREEN = '\033[0;32m'
@@ -50,6 +50,17 @@ class bcolors:
     FAIL = '\033[1;31m'
     INVERTED = '\033[0;30;44m'
     ENDC = '\033[0m'
+
+class bcolors:
+    HEADER = ''
+    OKBLUE = ''
+    OKGREEN = ''
+    OKYELLOW = ''
+    WARNING = ''
+    IMPORTANT = ''
+    FAIL = ''
+    INVERTED = ''
+    ENDC = ''
 
 
 class Storage(file.Storage):
