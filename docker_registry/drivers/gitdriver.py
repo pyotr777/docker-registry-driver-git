@@ -30,7 +30,7 @@ from docker_registry.core import lru
 
 logger = logging.getLogger(__name__)
 
-version = "0.6.03f"
+version = "0.6.04c"
 _root_dir = "/Users/peterbryzgalov/tmp/"
 repository_path = "repositories/library/"
 images_path = "images/"
@@ -46,8 +46,9 @@ class bcolors:
     OKGREEN = '\033[0;32m'
     OKYELLOW = '\033[0;33m'
     WARNING = '\033[0;31m'
+    IMPORTANT = '\033[1;30;47m'
     FAIL = '\033[1;31m'
-    INVERTED = '\033[0;30;47m'
+    INVERTED = '\033[0;30;44m'
     ENDC = '\033[0m'
 
 
@@ -56,7 +57,7 @@ class Storage(file.Storage):
     gitrepo = None
     valid_imageID = "[0-9a-f]{64}"
     imageID_pattern = None
-    layer_size = 0 # store size of layer tar
+    layer_size = {} # store size of layer tar for images
 
     def __init__(self, path=None, config=None):
         global working_dir, storage_dir
@@ -140,7 +141,7 @@ class Storage(file.Storage):
 
     def stream_write(self, path, fp):
         path = self._init_path(path, create=True)
-        print bcolors.HEADER+"stream_write " + path+ bcolors.ENDC
+        print bcolors.IMPORTANT+"stream_write " + path+ bcolors.ENDC
         with open(path, mode='wb') as f:
             try:
                 while True:
@@ -150,8 +151,8 @@ class Storage(file.Storage):
                     f.write(buf)
             except IOError:
                 pass
-        self.layer_size = self.get_size(path)
-        print "stream_write finished "+str(self.layer_size)
+        self.layer_size[self.gitrepo.imageID] = self.get_size(path)
+        print "stream_write finished "+str(self.layer_size[self.gitrepo.imageID])
         return
 
     def list_directory(self, path=None):
@@ -201,8 +202,12 @@ class Storage(file.Storage):
         except OSError as ex:
             print "Not found " + path
             if self.needLayer(path):
-                print self.layer_size
-                return self.layer_size
+                if self.layer_size[self.gitrepo.imageID] is not None:
+                    print self.layer_size[self.gitrepo.imageID]
+                    return self.layer_size[self.gitrepo.imageID]
+                else:
+                    print 0
+                    return 0
             print ex
             raise exceptions.FileNotFoundError('%s is not there' % path)
 
@@ -348,7 +353,9 @@ class gitRepo():
                 self.createCommit()                
             else:
                 # Id have data for different imageID, store previous image now
-                if self.last_checked_imageID is not None and self.last_checked_imageID != self.imageID:
+                if self.last_checked_imageID is not None \
+                    and self.last_checked_imageID != self.imageID \
+                    and self.image_tag is not None:
                     print bcolors.WARNING+"Image ID changed" + bcolors.ENDC
                     newID = self.imageID
                     self.imageID = self.last_checked_imageID
@@ -554,7 +561,8 @@ class gitRepo():
         if (OSErrors):
             print "Had some OSErrors"
         tar.close()
-        os.remove(source)
+        # TODO reenable remove layer tar after fixing getsize bug
+        # os.remove(source)
         return len(tar_members)
 
     # Adds record to imagetable imageID : commitID
