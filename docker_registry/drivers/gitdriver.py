@@ -23,6 +23,7 @@ import json
 import shutil
 import csv
 import re
+import random
 from docker_registry.drivers import file
 # from docker_registry.core import driver   # Inheritance: driver.Base --> file --> gitdriver
 from docker_registry.core import exceptions
@@ -30,7 +31,7 @@ from docker_registry.core import lru
 
 logger = logging.getLogger(__name__)
 
-version = "0.7.08r"
+version = "0.7.11c"
 #
 # Store only contnets of layer archive in git
 #
@@ -44,29 +45,36 @@ waitfile="_inprogress"
 layer_dir = "layer_dir"
 filelist = "filelist"
 
-class bcolors:
-    HEADER = '\033[0;35m'
-    OKBLUE = '\033[0;34m'
-    OKGREEN = '\033[0;32m'
-    OKYELLOW = '\033[0;33m'
-    CYAN = '\033[0;36m'
-    WARNING = '\033[0;31m'
-    IMPORTANT = '\033[1;30;47m'
-    FAIL = '\033[1;31m'
-    INVERTED = '\033[0;30;44m'
-    ENDC = '\033[0m'
 
-class bcolorsnone:
-    HEADER = ''
-    OKBLUE = ''
-    OKGREEN = ''
-    OKYELLOW = ''
-    CYAN = ''
-    WARNING = ''
-    IMPORTANT = ''
-    FAIL = ''
-    INVERTED = ''
-    ENDC = ''
+class bcolors:
+    code = {
+        "HEADER": '\033[0;35m',
+        "OKBLUE": '\033[0;34m',
+        "OKGREEN": '\033[0;32m',
+        "OKYELLOW": '\033[0;33m',
+        "CYAN": '\033[0;36m',
+        "WARNING": '\033[0;31m',
+        "IMPORTANT": '\033[1;30;47m',
+        "FAIL": '\033[1;31m',
+        "INVERTED": '\033[0;30;44m',
+        "ENDC": '\033[0m'
+    }
+
+
+class Logprint:
+
+    def info(self, str=None, mode=None):
+        if str.find(repository_path) >= 0:
+            print bcolors.code["IMPORTANT"] + str + bcolors.code["ENDC"]
+            return
+
+        if mode is not None:
+            print bcolors.code[mode] + str + bcolors.code["ENDC"]
+        else:
+            print str 
+
+
+logprint = Logprint()
 
 
 class Storage(file.Storage):
@@ -99,7 +107,6 @@ class Storage(file.Storage):
             path = os.path.join(working_dir,"layer")
         else:
             path = os.path.join(storage_dir, path) if path else storage_dir
-        # print bcolors.OKBLUE+"_init_path "+org_path+" -> "+path+bcolors.ENDC
         if create is True:
             dirname = os.path.dirname(path)
             if not os.path.exists(dirname):
@@ -109,7 +116,7 @@ class Storage(file.Storage):
     @lru.get
     def get_content(self, path):                
         path = self._init_path(path)
-        print bcolors.OKBLUE+"get_content from "+path + bcolors.ENDC
+        logprint.info("get_content from "+path, "OKBLUE")
         d=file.Storage.get_content(self,path)        
         return d
 
@@ -118,7 +125,7 @@ class Storage(file.Storage):
         # tag=self.haveImageTag(path)        
         path = self._init_path(path, create=True)
         self.gitrepo.getInfoFromPath(path,content)
-        print bcolors.CYAN+"put_content at "+ path+ " "+ str(content)[:150] + bcolors.ENDC
+        logprint.info("put_content at "+ path+ " "+ str(content)[:150],"OKBLUE")
         with open(path, mode='wb') as f:
             f.write(content)
         # if tag is not None:
@@ -127,7 +134,7 @@ class Storage(file.Storage):
 
     def stream_read(self, path, bytes_range=None):
         path = self._init_path(path)
-        print(bcolors.HEADER+" stream_read from "+ path+bcolors.ENDC)
+        print(" stream_read from ","HEADER")
         nb_bytes = 0
         total_size = 0
         try:
@@ -154,13 +161,13 @@ class Storage(file.Storage):
                     if not buf:
                         break
                     yield buf
-            print "Read finished"            
+            logprint.info("Read finished")
         except IOError:
             raise exceptions.FileNotFoundError('%s is not there' % path)
 
     def stream_write(self, path, fp):
         path = self._init_path(path, create=True)
-        print bcolors.HEADER+"stream_write " + path+ bcolors.ENDC
+        logprint.info("stream_write " + path,"HEADER")
         with open(path, mode='wb') as f:
             try:
                 while True:
@@ -170,12 +177,12 @@ class Storage(file.Storage):
                     f.write(buf)
             except IOError:
                 pass
-        print "stream_write finished"
+        logprint.info("stream_write finished")
         self.gitrepo.storeLayer()        
         return
 
     def list_directory(self, path=None):
-        print "List "+path
+        logprint.info("List "+path)
         prefix = ''
         if path:
             prefix = '%s/' % path
@@ -198,7 +205,7 @@ class Storage(file.Storage):
     @lru.remove
     def remove(self, path):        
         path = self._init_path(path)
-        print "remove "+path
+        logprint.info("remove "+path)
         if os.path.isdir(path):
             shutil.rmtree(path)
             return
@@ -206,7 +213,7 @@ class Storage(file.Storage):
             os.remove(path)
         except OSError:
             raise exceptions.FileNotFoundError('%s is not there' % path)
-        print "Removed "+path
+        logprint.info("Removed "+path)
         self.gitrepo.checkSettings()
 
     def get_size(self, path):
@@ -214,15 +221,15 @@ class Storage(file.Storage):
         # logger.info("get_size %s",path)
         
         try:
-            print "Getting size of "+path
+            logprint.info("Getting size of "+path)
             size = os.path.getsize(path)
-            print size
+            logprint.info(size)
             return size
         except OSError as ex:
-            print "Not found " + path
+            logprint.info("Not found " + path)
             if self.needLayer(path):
                 return 0
-            print ex
+            logprint.info(ex)
             raise exceptions.FileNotFoundError('%s is not there' % path)
 
 
@@ -234,14 +241,14 @@ class Storage(file.Storage):
             if tparts[0] == "tag":
                 return tparts[1]
             else:
-                print "Have "+parts[1] + " in haveImageTag"
+                logprint.info("Have "+parts[1] + " in haveImageTag")
         return None
 
     # Check out imageID directory from gir tepository and
     # prepare layer as a tar archive.
     def prepareCheckout(self, path):
         fullpath = self.gitrepo.prepareCheckout(path)
-        print "Prepare "+fullpath
+        logprint.info("Prepare "+fullpath)
         return fullpath
 
     # Return true if path ends with /layer
@@ -311,18 +318,18 @@ class gitRepo():
     def tagImage(self, tag = None, imageID_a = None):
         if imageID_a is None or tag is None:
             return
-        print bcolors.OKYELLOW + "Tag image " + imageID_a +" with tag " + tag + bcolors.ENDC
+        logprint.info("Tag image " + imageID_a +" with tag " + tag,"OKYELLOW")
         imageID_b =self.getImageID(imageID_a)
         if imageID_b is None:
-            print bcolors.FAIL+"Error getting image ID from " + imageID_a
+            logprint.info("Error getting image ID from " + imageID_a,"FAIL")
             return
         commitID = self.getCommitID(imageID_b)
         if commitID is not None:
             # image already commited
             self.repo.create_tag(tag,commitID)
-            print bcolors.OKGREEN+"Set tag "+ tag+ " for commit " + commitID+bcolors.ENDC
+            logprint.info("Set tag "+ tag+ " for commit " + commitID,"OKGREEN")
         else:
-            print "Set tag for next commit"
+            logprint.info("Set tag for next commit")
             self.image_tag = tag
 
 
@@ -330,7 +337,7 @@ class gitRepo():
     def getImageID(self, s):
         s = s.strip()
         match=self.imageID_pattern.match(s)
-        print "Matching string "+ s+ ": "+str(match)
+        # logprint.info("Matching string "+ s+ ": "+str(match))
         if match is not None and match.groups(0) is not None:
             return match.group(0)
         return None
@@ -338,52 +345,52 @@ class gitRepo():
 
     # called from put_content()
     def getInfoFromPath(self,path=None,content=None):
-        print "getinfo "+path
+        #logprint.info("getinfo "+path)
         if path is None:
-            print bcolors.INVERTED+"path is None in getInfoFromPath"+bcolors.ENDC
+            logprint.info("path is None in getInfoFromPath","FAIL")
         # path should be ...reposiroties/library/imagename/something
         if path.find(repository_path) >= 0:
-            splitpath=os.path.split(path) # should be [".../imagename","something"]
+            splitpath=os.path.split(path)  # should be [".../imagename","something"]
             self.image_name = os.path.split(splitpath[0])[1]            
             if splitpath[1].find("tag_") >=0:
                 self.image_tag = splitpath[1].split("_")[1]
                 if content is not None:
                     commitID = self.getCommitID(content)
-                    print bcolors.OKBLUE + "image ID " + content[:self.ID_nums] + " commitID "+str(commitID)+bcolors.ENDC
+                    # logprint.info("image ID " + content[:self.ID_nums] + " commitID "+str(commitID),"OKBLUE")
                     if commitID is not None:
                         # New branch with image name
                         branch_name = self.makeBranchName()
                         branch= self.newBranch(branch_name,commitID)
-                        print "Updated branch "+ str(branch)
+                        logprint.info("Updated branch "+ str(branch))
                         self.image_tag = None
         elif path.find(images_path) >= 0:            
-            self.imageID = self.getImageIDFromPath(path) # should be ["images/ImageID","something"]
+            self.imageID = self.getImageIDFromPath(path)  # should be ["images/ImageID","something"]
         self.checkSettings()
 
     # called from getInfoFromPath()
     def getImageIDFromPath(self,path=None):
         # path should be ..../Image/something
-        if path.find(images_path) < 0 :
+        if path.find(images_path) < 0:
             return
-        # print "path="+path+"  in getImageIDFromPath"
-        splitpath=os.path.split(path) # should be ["../images/ImageID","something"]
+        # logprint.info("path="+path+"  in getImageIDFromPath")
+        splitpath=os.path.split(path)  # should be ["../images/ImageID","something"]
         splitpath=os.path.split(splitpath[0])  # ["../images","ImageID"]
         if self.storage_path is None:
             storage_path = os.path.split(splitpath[0])[0]
             if storage_path is not None and len(storage_path) > 0:
                 self.storage_path = storage_path
-                print bcolors.OKBLUE + "storage_path: "+ self.storage_path+bcolors.ENDC
+                logprint.info("storage_path: "+ self.storage_path,"OKBLUE")
         imageID = splitpath[1]
-        # print  "Image ID: "+ imageID
+        # logprint.info( "Image ID: "+ imageID)
         return imageID
 
     def checkSettings(self):
         if self.imageID is not None:
             self.parentID = self.readJSON("parent")
-            print bcolors.INVERTED+"imageID="+str(self.imageID)[:8]+\
-                    " image_name="+str(self.image_name)+\
-                    " image_tag="+str(self.image_tag)+\
-                    " parent="+str(self.parentID)[:8]+bcolors.ENDC
+            logprint.info("imageID="+str(self.imageID)[:8]+
+                          " image_name="+str(self.image_name)+
+                          " image_tag="+str(self.image_tag)+
+                          " parent="+str(self.parentID)[:8],"INVERTED")
     
 
     # Return parent commit ID of checked out commit in working_dir.
@@ -393,7 +400,7 @@ class gitRepo():
         # Set parentID
         parentID = None
         pathj = os.path.join(storage_dir,"images",self.imageID,"json")
-        print bcolors.CYAN + "Read JSON from " + pathj + bcolors.ENDC 
+        # logprint.info("Read JSON from " + pathj +,"OKBLUE" )
         try:
             f = open(pathj,"r")
 
@@ -403,7 +410,7 @@ class gitRepo():
             except KeyError:
                 pass
             else:
-                print "parentID: "+parentID      
+                logprint.info("parentID: "+parentID)
         except IOError:
             pass
         return parentID
@@ -417,8 +424,8 @@ class gitRepo():
         global working_dir, layer_dir
         layer_tar_path = os.path.join(working_dir, "layer")
         layer_dir_path = os.path.join(working_dir, layer_dir)
-        tar_members_num= self.untar(layer_tar_path, layer_dir_path) # Untar to layer_dir and write to filelist
-        print "Untar "+str(tar_members_num)+" elements from "+layer_tar_path+" to " + layer_dir_path
+        tar_members_num= self.untar(layer_tar_path, layer_dir_path)  # Untar to layer_dir and write to filelist
+        logprint.info("Untar "+str(tar_members_num)+" elements from "+layer_tar_path+" to " + layer_dir_path)
         self.createCommit()
         self.cleanDir()
 
@@ -465,8 +472,8 @@ class gitRepo():
         # store pair imageID:commitID in imagetable
         global working_dir, layer_dir
 
-        branch_name = self.makeBranchName()        
-        print bcolors.IMPORTANT+"Creating commit " +self.imageID[:8] + " branch:" + branch_name+" parent:" + str(self.parentID)[:8]+bcolors.ENDC
+        # branch_name = self.makeBranchName()        
+        logprint.info("Creating commit " +self.imageID[:8] + " branch:" + branch_name+" parent:" + str(self.parentID)[:8],"IMPORTANT")
         
         if self.repo is None:
             self.initGitRepo(working_dir)
@@ -474,13 +481,24 @@ class gitRepo():
         parent_commit = None
         parent_commitID = 0
         branch = None
-        stashed = False
+        branch_last_commitID = 0
 
         if self.parentID is not None:
             parent_commitID = self.getCommitID(self.parentID)
-            print "Parent commitID " + parent_commitID[:8]
+            logprint.info("Parent commitID " + parent_commitID[:8])
             parent_commit = self.getCommit(parent_commitID)
-            # print "Parent commit " + str(parent_commit)[:8]
+            # logprint.info("Parent commit " + str(parent_commit)[:8])
+            if self.image_tag is None:
+                # Get SHA of last commit on branch_name
+                refs = self.gitcom.show_ref("--heads")
+                for line in refs.splitlines():
+                    if line.endswith("/"+branch_name):
+                        branch_last_commitID = line.split()[0]
+                        logprint.info(branch_name+" last commit ID "+branch_last_commitID[:8])
+                        break
+                # Compare parrent commit ID and commit ID of branch_name
+                if parent_commitID != branch_last_commitID:
+                    branch_name = self.makeBranchName("tmp") 
 
         # CHECKOUT PARENT COMMIT
         # Need to put commit on branch with name branch_name
@@ -488,33 +506,33 @@ class gitRepo():
         if parent_commit is not None:            
             if branch_name is None:
                 branch=self.repo.head.reference
-                print "Positioned on branch "+str(branch)
+                logprint.info("Positioned on branch "+str(branch))
             elif branch_name not in self.repo.branches:
                 # Create new branch branch_name
                 branch=self.newBranch(branch_name,str(parent_commitID))
-                print "Created branch " + str(branch) + " from commmit "+str(parent_commitID)
-                print self.gitcom.logf(graph=True)
+                logprint.info("Created branch " + str(branch) + " from commmit "+str(parent_commitID))
+                logprint.info(self.gitcom.logf(graph=True))
             else:
                 branch=self.repo.heads[branch_name]
-                print "Branch: "+str(branch)
+                logprint.info("Branch: "+str(branch))
                 
-        print "Last checked out commit "+str(self.checked_commit)
-        print bcolors.OKBLUE
-        print self.gitcom.status()
-        print bcolors.ENDC
+        logprint.info("Last checked out commit "+str(self.checked_commit))
+        logprint.info(bcolors.code["OKBLUE"])
+        self.printGitStatus(self.gitcom)
+        logprint.info(bcolors.code["ENDC"])
+
         if parent_commit is not None and self.checked_commit != parent_commit:
-            print bcolors.OKYELLOW+"Switching to branch "+ branch_name
+            logprint.info(bcolors.code["OKYELLOW"]+"Switching to branch "+ branch_name)
             self.checkoutBranch(str(branch),"reset")
-            print "Checked out branch "+str(branch)
+            logprint.info("Checked out branch "+str(branch))
             self.checked_commit = parent_commit
-            print "git checked out " + str(parent_commit) + " ?"
-            print self.gitcom.status()
-            print bcolors.ENDC
+            logprint.info("git checked out " + str(parent_commit) + " ?")
+            self.printGitStatus(self.gitcom)
+            logprint.info(bcolors.code["ENDC"])
         elif branch is not None:
             self.repo.head.reference = branch
         
-        print self.gitcom.status()
-
+        
                 
         # MAKE NEW COMMIT
         commit = self.makeCommit()
@@ -529,23 +547,23 @@ class gitRepo():
         if branch_name not in self.repo.branches:
             branch=self.newBranch(branch_name)
             self.repo.head.reference = branch
-            print "Created branch " + str(branch)
-            print self.gitcom.logf(graph=True)
+            logprint.info("Created branch " + str(branch))
+            logprint.info(self.gitcom.logf(graph=True))
 
         # Get commit ID
         try:
             commitID = commit.hexsha
         except AttributeError:
-            print "Error getting commit ID ", commit
+            logprint.info("Error getting commit ID ", commit)
             commit = self.repo.head.reference.commit
-            print "HEAD is poiting to commit ", commit
+            logprint.info("HEAD is poiting to commit ", commit)
             commitID = commit.hexsha
-            print "CommitID="+str(commitID)
+            logprint.info("CommitID="+str(commitID))
         parent_commitID=""
         if parent_commit is not None:
             parent_commitID = parent_commit.hexsha
-        print bcolors.OKGREEN+"Created commit "+str(commitID)+" on branch "+str(self.repo.head.reference)+", parent commit "+str(parent_commitID)+bcolors.ENDC
-        print self.gitcom.logf(graph=True)
+        logprint.info("Created commit "+str(commitID)+" on branch "+str(self.repo.head.reference)+", parent commit "+str(parent_commitID),"OKGREEN")
+        logprint.info(self.gitcom.logf(graph=True))
 
         # Add record to image table
         self.addRecord(self.imageID,commitID)
@@ -559,15 +577,15 @@ class gitRepo():
     def untar(self, source=None, dst=None):
         global filelist
         if not os.path.exists(dst):
-            print "create path "+ dst
+            logprint.info("create path "+ dst)
             os.makedirs(dst)
         filelist_path = os.path.join(working_dir, filelist)        
         ffilelist = open(filelist_path, mode="wb")     
         logger.info("untar from %s to %s",source,dst)
         tar=tarfile.open(source)
         tar_members = tar.getnames()
-        #print "Tar members # : "+ str(len(tar_members))
-        #print tar_members[0:150]
+        #logprint.info("Tar members # : "+ str(len(tar_members)))
+        #logprint.info(tar_members[0:150])
         IOErrors = False
         OSErrors = False
         if (len(tar_members) > 1):
@@ -575,7 +593,7 @@ class gitRepo():
             for member in members:
                 if member.name == ".":
                     continue
-                # print member.name + " ["+str(member.size)+"] t="+str(member.type) + " m=" + str(int(member.mode))
+                # logprint.info(member.name + " ["+str(member.size)+"] t="+str(member.type) + " m=" + str(int(member.mode)))
                 ffilelist.write(member.name+", "+str(member.mode) + ", "+ str(member.type)+"\n") 
                 try:
                     tar.extract(member,dst)
@@ -584,9 +602,9 @@ class gitRepo():
                 except OSError:
                     OSErrors = True
         if (IOErrors):
-            print "Had some IOErrors"
+            logprint.info("Had some IOErrors")
         if (OSErrors):
-            print "Had some OSErrors"
+            logprint.info("Had some OSErrors")
         tar.close()
         os.remove(source)  # Remove tar "layer"
         return len(tar_members)
@@ -599,7 +617,7 @@ class gitRepo():
         w.writerow([image,commit])        
 
     # Return commitID with imageID
-    def getCommitID(self,imageID,image_table = None):
+    def getCommitID(self,imageID,image_table=None):
         global imagetable, _root_dir
         if image_table is None:
             image_table = imagetable
@@ -612,13 +630,13 @@ class gitRepo():
         logger.debug("Reading from image table %s",image_table)
         for image, commit in csv.reader(open(image_table)):
             if image==imageID:
-                # print "Found commit "+commit
+                # logprint.info("Found commit "+commit)
                 return commit            
         return None
     
     # Returns commit object with ID = commitID
     def getCommit(self,commitID):
-        # print "Search commit "+commitID
+        # logprint.info("Search commit "+commitID)
         current_branch = self.repo.head.reference
         # self.repo.iter_commits() returns only commits on current branch
         # Loop through all branches
@@ -626,7 +644,7 @@ class gitRepo():
             if self.repo.head.reference != branch:
                 self.repo.head.reference = branch
             for commit in self.repo.iter_commits():
-                # print commit.hexsha
+                # logprint.info(commit.hexsha)
                 if commitID == commit.hexsha:
                     self.repo.head.reference = current_branch
                     return commit
@@ -634,30 +652,30 @@ class gitRepo():
     def makeCommit(self):
         try:
             self.gitcom.add("-A")
-            out=self.gitcom.commit("-m","Comment")
-            # print "Creating commit: "+ out
+            out = self.gitcom.commit("-m","Comment")
+            # logprint.info("Creating commit: "+ out)
         except gitmodule.GitCommandError as expt:
-            print "Exception at git add and commit "+ str(expt)
-        print "HEAD:"+str(self.repo.head.reference.commit)
+            logprint.info("Exception at git add and commit "+ str(expt))
+        logprint.info("HEAD:"+str(self.repo.head.reference.commit))
         return self.repo.head.reference.commit
 
     def newBranch(self,branch_name,commitID=None):
         if commitID is not None:
             if branch_name not in self.repo.branches:
                 self.gitcom.branch(branch_name,commitID)
-                print "Created branch "+branch_name+ " at " + commitID
-            else :
+                logprint.info("Created branch "+branch_name+ " at " + commitID)
+            else:
                 # Force branch to point to commit 
                 if self.repo.head.reference != branch_name:
                     try:
                         self.gitcom.branch(branch_name,commitID,f=True)
-                        print "Forced branch "+branch_name+" to point to "+ commitID
+                        logprint.info("Forced branch "+branch_name+" to point to "+ commitID)
                     except gitmodule.GitCommandError as expt:
-                        print "Exception at git checkout "+ str(expt)
+                        logprint.info("Exception at git checkout "+ str(expt))
         else:
             self.gitcom.branch(branch_name)
-            print "New branch "+branch_name
-        print self.gitcom.branch()
+            logprint.info("New branch "+branch_name)
+        logprint.info(self.gitcom.branch())
         branch=self.repo.heads[branch_name]
         return branch
 
@@ -680,12 +698,12 @@ class gitRepo():
     def checkoutBranch(self, branch_name, reset=None):
         global working_dir, layer_dir
         if reset is not None:
-            print "git reset"
-            self.gitcom.reset("--mixed","busy1")
-            print self.gitcom.status()
+            logprint.info("git reset")
+            self.gitcom.reset("--mixed",branch_name)
+            logprint.info(self.gitcom.status())
         self.repo.heads[branch_name].checkout()
-        print "Checked out "+branch_name
-        print self.gitcom.status()
+        logprint.info("Checked out "+branch_name)
+        # logprint.info(self.gitcom.status())
     
     def checkoutImage(self, imageID):
         self.checkoutCommit(self.getCommitID(imageID))
@@ -694,35 +712,38 @@ class gitRepo():
         global working_dir
         if self.checked_commit == commitID:
             return        
-        print "Checking out commit "+commitID+" into " + working_dir
+        logprint.info("Checking out commit "+commitID+" into " + working_dir)
         try:
             os.chdir(working_dir)
             out=self.gitcom.checkout(commitID,f=True)
             self.checked_commit = commitID
-            # print out
+            # logprint.info(out)
         except gitmodule.GitCommandError as expt:
-            print "Exception at git checkout "+ str(expt)
+            logprint.info("Exception at git checkout "+ str(expt))
             return None
         return out
 
-    def makeBranchName(self):
-        if self.image_name is None:
-            return None
-        if self.image_name.find(".") > 0 or self.image_tag is None:
-            return self.image_name
-        else:
-            return self.image_name + "." + self.image_tag
+    def makeBranchName(self,prefix=None):
+        if prefix is None:
+            if self.image_name is None:
+                return None
+            if self.image_name.find(".") > 0 or self.image_tag is None:
+                return self.image_name
+            else:
+                return self.image_name + "." + self.image_tag
+
+        return prefix + str(self.image_name) + str(random.randint(1,1000000))
 
     # Check imageID and checked out commit 
     # If checked out commit != imageID commit,
     # Clean directory and check out 
     def prepareCheckout(self, path):
         global working_dir
-        print "Preparing checkout "+path
+        logprint.info("Preparing checkout "+path)
         imageID = self.getImageIDFromPath(path)
-        # print "ImageID "+imageID
+        # logprint.info("ImageID "+imageID)
         commitID = self.getCommitID(imageID)
-        print "CommitID "+commitID
+        logprint.info("CommitID "+commitID)
         self.checkoutCommit(commitID)
         path_file = os.path.split(path)[1]
         return os.path.join(working_dir,path_file)
@@ -742,15 +763,15 @@ class gitRepo():
         out = ""
         try:
             os.chdir(self.working_dir)
-            out = subprocess.check_output(['git', 'diff', '--name-only', \
-                    parentID[:8], commitID[:8]])
+            out = subprocess.check_output(['git', 'diff', '--name-only',
+                                          parentID[:8], commitID[:8]])
         except subprocess.CalledProcessError as ex:            
-            print "Error executing git diff command.\n"+str(ex)
-            print "Output: "+ out
+            logprint.info("Error executing git diff command.\n"+str(ex))
+            logprint.info("Output: "+ out)
             return None
-        print "Different files list: "
+        logprint.info("Different files list: ")
         items = out.split("\n")
-        print items
+        logprint.info(items)
         # Move into layer directory
         os.chdir(os.path.join(self.working_dir,"layer"))
         tar = tarfile.open(tar_path,"w")
@@ -764,11 +785,11 @@ class gitRepo():
             try:
                 tar.add(item)
             except OSError as ex:
-                print item + " "+ str(ex)
+                logprint.info(item + " "+ str(ex))
         tar.close()
         new_tar_path = os.path.join(self.working_dir,"layer.tar")
         shutil.move(tar_path,new_tar_path)
-        print "Tar created "+ new_tar_path
+        logprint.info("Tar created "+ new_tar_path)
         return new_tar_path
 
     def cleanDir(self, dir=None):
@@ -777,14 +798,24 @@ class gitRepo():
             if dir is None:
                 dir = working_dir
 
-            print "cleaning "+dir
+            logprint.info("cleaning "+dir)
             for item in os.listdir(dir):
                 path = os.path.join(dir,item)
                 if item not in ignore:
-                    print "Removing " + item + " " + str(os.path.isfile(path))
+                    logprint.info("Removing " + item + " " + str(os.path.isfile(path)))
                     if os.path.isfile(path):
                         os.remove(path)
                     else:
                         shutil.rmtree(path)
-            print "Directory ("+dir+") cleaned"
+            logprint.info("Directory ("+dir+") cleaned")
         
+    def printGitStatus(self, git):
+        l = 360
+        stat = self.gitcom.status() 
+        if len(stat) < l*2:
+            logprint.info("statlen"+str(len(stat)))
+            logprint.info(stat)
+        else:
+            logprint.info(stat[:l])
+            logprint.info("...")
+            logprint.info(stat[-1*l:])
