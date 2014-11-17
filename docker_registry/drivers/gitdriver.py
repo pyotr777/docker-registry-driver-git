@@ -31,7 +31,7 @@ from docker_registry.core import lru
 
 logger = logging.getLogger(__name__)
 
-version = "0.7.11c"
+version = "0.7.15"
 #
 # Store only contnets of layer archive in git
 #
@@ -63,15 +63,20 @@ class bcolors:
 
 class Logprint:
 
+    debug = True
+    
     def info(self, str=None, mode=None):
         if str.find(repository_path) >= 0:
             print bcolors.code["IMPORTANT"] + str + bcolors.code["ENDC"]
             return
+        if self.debug:
+            if mode is not None:
+                print bcolors.code[mode] + str + bcolors.code["ENDC"]
+            else:
+                print str 
 
-        if mode is not None:
-            print bcolors.code[mode] + str + bcolors.code["ENDC"]
-        else:
-            print str 
+    def error(self,str):
+        logger.error(str)
 
 
 logprint = Logprint()
@@ -115,21 +120,19 @@ class Storage(file.Storage):
     
     @lru.get
     def get_content(self, path):                
-        path = self._init_path(path)
         logprint.info("get_content from "+path, "OKBLUE")
+        path = self._init_path(path)
         d=file.Storage.get_content(self,path)        
         return d
 
     @lru.set
     def put_content(self, path, content):
         # tag=self.haveImageTag(path)        
+        logprint.info("put_content at "+ path+ " "+ str(content)[:150],"OKBLUE")
         path = self._init_path(path, create=True)
         self.gitrepo.getInfoFromPath(path,content)
-        logprint.info("put_content at "+ path+ " "+ str(content)[:150],"OKBLUE")
         with open(path, mode='wb') as f:
             f.write(content)
-        # if tag is not None:
-        #    self.gitrepo.tagImage(tag,content)
         return path
 
     def stream_read(self, path, bytes_range=None):
@@ -198,14 +201,14 @@ class Storage(file.Storage):
             raise exceptions.FileNotFoundError('%s is not there' % path)
 
     def exists(self, path):
-        path = self._init_path(path)
         print"exists at " +path
+        path = self._init_path(path)
         return os.path.exists(path)
 
     @lru.remove
     def remove(self, path):        
-        path = self._init_path(path)
         logprint.info("remove "+path)
+        path = self._init_path(path)
         if os.path.isdir(path):
             shutil.rmtree(path)
             return
@@ -221,12 +224,10 @@ class Storage(file.Storage):
         # logger.info("get_size %s",path)
         
         try:
-            logprint.info("Getting size of "+path)
             size = os.path.getsize(path)
-            logprint.info(size)
             return size
         except OSError as ex:
-            logprint.info("Not found " + path)
+            logprint.error("Not found " + path)
             if self.needLayer(path):
                 return 0
             logprint.info(ex)
@@ -271,8 +272,9 @@ class gitRepo():
 
     imageID = None
     image_name = None
-    image_tag = None
     parentID = None
+    branch_name = None
+    ontemporarybranch = False
     storage_path = None  # Path to layer tar with 
     checked_commit = None  # ID of commit wich was last checked out into working dir
     ID_nums = 12  # Number of digits to store in ImageID
@@ -314,7 +316,7 @@ class gitRepo():
         self.gitcom=self.repo.git
         return
 
-    # called from put_content when have tag in path
+    # DELETEME
     def tagImage(self, tag = None, imageID_a = None):
         if imageID_a is None or tag is None:
             return
@@ -353,16 +355,26 @@ class gitRepo():
             splitpath=os.path.split(path)  # should be [".../imagename","something"]
             self.image_name = os.path.split(splitpath[0])[1]            
             if splitpath[1].find("tag_") >=0:
-                self.image_tag = splitpath[1].split("_")[1]
+                image_tag = splitpath[1].split("_")[1]
+                self.branch_name = self.makeBranchName(image_tag)
                 if content is not None:
                     commitID = self.getCommitID(content)
-                    # logprint.info("image ID " + content[:self.ID_nums] + " commitID "+str(commitID),"OKBLUE")
+                    logprint.info("Tagging image ID " + content[:self.ID_nums] + " commitID "+str(commitID),"OKBLUE")
                     if commitID is not None:
-                        # New branch with image name
-                        branch_name = self.makeBranchName()
-                        branch= self.newBranch(branch_name,commitID)
-                        logprint.info("Updated branch "+ str(branch))
-                        self.image_tag = None
+                        if self.ontemporarybranch:
+                            # Rename temporary branch
+                            target_branch_name = self.getBranchName(commitID)
+                            logprint.info("Rename branch "+ target_branch_name + 
+                                          " to "+ self.branch_name,"WARNING")
+                            self.gitcom.branch("-m",target_branch_name,self.branch_name)
+                            self.ontemporarybranch = False
+                        else:
+                            # New branch with image name
+                            branch= self.newBranch(self.branch_name,commitID)
+                            logprint.info("Updated branch "+ str(branch))
+                            self.image_tag = None
+            elif self.branch_name is None:
+                self.branch_name = self.makeBranchName()
         elif path.find(images_path) >= 0:            
             self.imageID = self.getImageIDFromPath(path)  # should be ["images/ImageID","something"]
         self.checkSettings()
@@ -390,6 +402,7 @@ class gitRepo():
             logprint.info("imageID="+str(self.imageID)[:8]+
                           " image_name="+str(self.image_name)+
                           " image_tag="+str(self.image_tag)+
+                          " branch="+str(self.branch_name)+
                           " parent="+str(self.parentID)[:8],"INVERTED")
     
 
@@ -459,7 +472,6 @@ class gitRepo():
         #
         # COPY AND UNTAR
         #
-        # overwrite _checksum, ancestry, json in working dir with _new contents_
         # untar new layer archive to working dir/layer directory overwriting duplicate files
         #
         # MAKE NEW COMMIT
@@ -473,7 +485,7 @@ class gitRepo():
         global working_dir, layer_dir
 
         # branch_name = self.makeBranchName()        
-        logprint.info("Creating commit " +self.imageID[:8] + " branch:" + branch_name+" parent:" + str(self.parentID)[:8],"IMPORTANT")
+        logprint.info("Creating commit " +self.imageID[:8] + " branch:" + str(self.branch_name)+" parent:" + str(self.parentID)[:8],"IMPORTANT")
         
         if self.repo is None:
             self.initGitRepo(working_dir)
@@ -492,37 +504,37 @@ class gitRepo():
                 # Get SHA of last commit on branch_name
                 refs = self.gitcom.show_ref("--heads")
                 for line in refs.splitlines():
-                    if line.endswith("/"+branch_name):
+                    if line.endswith("/"+self.branch_name):
                         branch_last_commitID = line.split()[0]
-                        logprint.info(branch_name+" last commit ID "+branch_last_commitID[:8])
+                        logprint.info(self.branch_name+" last commit ID "+branch_last_commitID[:8])
                         break
                 # Compare parrent commit ID and commit ID of branch_name
                 if parent_commitID != branch_last_commitID:
-                    branch_name = self.makeBranchName("tmp") 
+                    self.branch_name = self.image_name
 
         # CHECKOUT PARENT COMMIT
         # Need to put commit on branch with name branch_name
         # If branch "branch_name" exists switch to it
         if parent_commit is not None:            
-            if branch_name is None:
+            if self.branch_name is None:
                 branch=self.repo.head.reference
                 logprint.info("Positioned on branch "+str(branch))
-            elif branch_name not in self.repo.branches:
+            elif self.branch_name not in self.repo.branches:
                 # Create new branch branch_name
-                branch=self.newBranch(branch_name,str(parent_commitID))
+                branch=self.newBranch(self.branch_name,str(parent_commitID))
                 logprint.info("Created branch " + str(branch) + " from commmit "+str(parent_commitID))
                 logprint.info(self.gitcom.logf(graph=True))
             else:
-                branch=self.repo.heads[branch_name]
+                branch=self.repo.heads[self.branch_name]
                 logprint.info("Branch: "+str(branch))
                 
         logprint.info("Last checked out commit "+str(self.checked_commit))
-        logprint.info(bcolors.code["OKBLUE"])
-        self.printGitStatus(self.gitcom)
-        logprint.info(bcolors.code["ENDC"])
+        #logprint.info(bcolors.code["OKBLUE"])
+        #logprint.info(self.gitcom.logf())
+        #logprint.info(bcolors.code["ENDC"])
 
         if parent_commit is not None and self.checked_commit != parent_commit:
-            logprint.info(bcolors.code["OKYELLOW"]+"Switching to branch "+ branch_name)
+            logprint.info(bcolors.code["OKYELLOW"]+"Switching to branch "+ self.branch_name)
             self.checkoutBranch(str(branch),"reset")
             logprint.info("Checked out branch "+str(branch))
             self.checked_commit = parent_commit
@@ -544,8 +556,8 @@ class gitRepo():
             self.image_tag = None
 
         # Check that we have branch with image name
-        if branch_name not in self.repo.branches:
-            branch=self.newBranch(branch_name)
+        if self.branch_name not in self.repo.branches:
+            branch=self.newBranch(self.branch_name)
             self.repo.head.reference = branch
             logprint.info("Created branch " + str(branch))
             logprint.info(self.gitcom.logf(graph=True))
@@ -652,33 +664,12 @@ class gitRepo():
     def makeCommit(self):
         try:
             self.gitcom.add("-A")
-            out = self.gitcom.commit("-m","Comment")
+            self.gitcom.commit("-m","Comment")
             # logprint.info("Creating commit: "+ out)
         except gitmodule.GitCommandError as expt:
             logprint.info("Exception at git add and commit "+ str(expt))
         logprint.info("HEAD:"+str(self.repo.head.reference.commit))
         return self.repo.head.reference.commit
-
-    def newBranch(self,branch_name,commitID=None):
-        if commitID is not None:
-            if branch_name not in self.repo.branches:
-                self.gitcom.branch(branch_name,commitID)
-                logprint.info("Created branch "+branch_name+ " at " + commitID)
-            else:
-                # Force branch to point to commit 
-                if self.repo.head.reference != branch_name:
-                    try:
-                        self.gitcom.branch(branch_name,commitID,f=True)
-                        logprint.info("Forced branch "+branch_name+" to point to "+ commitID)
-                    except gitmodule.GitCommandError as expt:
-                        logprint.info("Exception at git checkout "+ str(expt))
-        else:
-            self.gitcom.branch(branch_name)
-            logprint.info("New branch "+branch_name)
-        logprint.info(self.gitcom.branch())
-        branch=self.repo.heads[branch_name]
-        return branch
-
 
     # Git check out branch.
     # If reset is set (value doesn't metter), execute commands:
@@ -723,16 +714,52 @@ class gitRepo():
             return None
         return out
 
-    def makeBranchName(self,prefix=None):
-        if prefix is None:
-            if self.image_name is None:
-                return None
-            if self.image_name.find(".") > 0 or self.image_tag is None:
-                return self.image_name
-            else:
-                return self.image_name + "." + self.image_tag
+    # Generate branch name
+    # Called from getInfoFromPath when put_content is called with image ID in path,
+    # and from createCommit when need temporary branch name
+    def makeBranchName(self,tag=None):
+        logprint.info("makeBranchName " + str(tag),"OKYELLOW")
+        branch_name = None
+        if tag is None:
+            branch_name = self.image_name
+        else:
+            branch_name = self.image_name + "." + tag
+        logprint.info("New branch name: "+ branch_name,"IMPORTANT")
+        return branch_name
 
-        return prefix + str(self.image_name) + str(random.randint(1,1000000))
+    # Get branch name on which commit with ID sits
+    def getBranchName(self, commitID):
+        if commitID is None:
+            logprint.info("CommitID is None in getBranchName.","FAIL")
+            return None
+        branches = self.gitcom.branch("--contains",commitID).split()
+        logprint.info("Commit "+ commitID + " is on branches:"+str(branches))
+        for branch in branches:
+            if branch != "*":
+                return branch
+        return None
+
+
+    def newBranch(self,branch_name,commitID=None):
+        if commitID is not None:
+            if branch_name not in self.repo.branches:
+                self.gitcom.branch(branch_name,commitID)
+                logprint.info("Created branch "+branch_name+ " at " + commitID)
+            else:
+                # Force branch to point to commit 
+                if self.repo.head.reference != branch_name:
+                    try:
+                        self.gitcom.branch(branch_name,commitID,f=True)
+                        logprint.info("Forced branch "+branch_name+" to point to "+ commitID)
+                    except gitmodule.GitCommandError as expt:
+                        logprint.info("Exception at git checkout "+ str(expt))
+        else:
+            self.gitcom.branch(branch_name)
+            logprint.info("New branch "+branch_name)
+        logprint.info(self.gitcom.branch())
+        branch=self.repo.heads[branch_name]
+        return branch
+
 
     # Check imageID and checked out commit 
     # If checked out commit != imageID commit,
