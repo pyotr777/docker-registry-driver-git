@@ -14,7 +14,7 @@ gitdriver stores information from images/ directory in git repository.
 """
 
 import os
-import sys
+#import sys
 import subprocess
 import git as gitmodule
 import logging
@@ -23,7 +23,6 @@ import json
 import shutil
 import csv
 import re
-import random
 from docker_registry.drivers import file
 # from docker_registry.core import driver   # Inheritance: driver.Base --> file --> gitdriver
 from docker_registry.core import exceptions
@@ -31,7 +30,7 @@ from docker_registry.core import lru
 
 logger = logging.getLogger(__name__)
 
-version = "0.7.16b"
+version = "0.7.22c"
 #
 # Store only contnets of layer archive in git
 #
@@ -179,7 +178,8 @@ class Storage(file.Storage):
                         break
                     f.write(buf)
             except IOError:
-                pass
+                raise exceptions.IOError("Error storing image file system.")
+            
         logprint.info("stream_write finished")
         self.gitrepo.storeLayer()        
         return
@@ -296,10 +296,7 @@ class gitRepo():
         self.parentID = None
         self.image_tag = None        
 
-        # TODO get back cleanDir after commiting works correctly
-        #self.cleanDir()
-
-
+        
     # Init git repository
     # Sets class variables "repo" and "gitcom".
     def initGitRepo(self, path=None):
@@ -380,34 +377,31 @@ class gitRepo():
 
     def checkSettings(self):
         if self.imageID is not None:
-            self.parentID = self.readJSON("parent")
+            try:
+                self.parentID = self.readJSON()["parent"]
+            except TypeError:
+                logprint.info("Couldn't read JSON")
+            except KeyError:
+                logprint.error("No field \"parent\"")
             logprint.info("imageID="+str(self.imageID)[:8]+
                           " image_name="+str(self.image_name)+
                           " branch="+str(self.branch_name)+
                           " parent="+str(self.parentID)[:8],"INVERTED")
     
 
-    # Return parent commit ID of checked out commit in working_dir.
     # Read from json file in working_dir.
-    def readJSON(self,field):
+    def readJSON(self):
         global storage_dir
-        # Set parentID
-        parentID = None
         pathj = os.path.join(storage_dir,"images",self.imageID,"json")
-        # logprint.info("Read JSON from " + pathj +,"OKBLUE" )
+        logprint.info("Read JSON from " + pathj ,"OKBLUE" )
         try:
             f = open(pathj,"r")
-
             image_json = json.load(f)
-            try:
-                parentID = image_json[field]
-            except KeyError:
-                pass
-            else:
-                logprint.info("parentID: "+parentID)
+            # logprint.info("JSON: "+ str(image_json),"OKBLUE")            
         except IOError:
-            pass
-        return parentID
+            logprint.info("File not found "+str(pathj))
+            return None
+        return image_json
 
 
     # Called after "layer" tar archive saved in working_dir.
@@ -421,7 +415,7 @@ class gitRepo():
         tar_members_num= self.untar(layer_tar_path, layer_dir_path)  # Untar to layer_dir and write to filelist
         logprint.info("Untar "+str(tar_members_num)+" elements from "+layer_tar_path+" to " + layer_dir_path)
         self.createCommit()
-        self.cleanDir()
+        # self.cleanDir()
 
 
     # Creates commit using following variables:
@@ -525,10 +519,13 @@ class gitRepo():
             logprint.info("git checked out " + str(parent_commit) + " ?")
             logprint.info(self.gitcom.logf("--graph","--all"))
             logprint.info(bcolors.code["ENDC"])
-        
-                
+                        
+        comment = self.readJSON()["container_config"]["Cmd"]
+        if comment is None:
+            comment = "--"
+
         # MAKE NEW COMMIT
-        commit = self.makeCommit()
+        commit = self.makeCommit(self.parseCommand(comment))
 
         # Tag commit
         self.repo.create_tag(self.imageID[:self.ID_nums])
@@ -639,10 +636,11 @@ class gitRepo():
                     self.repo.head.reference = current_branch
                     return commit
 
-    def makeCommit(self):
+    def makeCommit(self, comment="Comment"):
+        logprint.info("Commiting with comment:" + comment,"CYAN")
         try:
             self.gitcom.add("-A")
-            self.gitcom.commit("-m","Comment")
+            self.gitcom.commit("-m",comment)
             # logprint.info("Creating commit: "+ out)
         except gitmodule.GitCommandError as expt:
             logprint.info("Exception at git add and commit "+ str(expt))
@@ -759,8 +757,8 @@ class gitRepo():
             return tar_path
         self.prepareCheckout(path)        
         # Get parent commit
-        commitID = self.getCommitID(self.readJSON("id"))
-        parentID = self.getCommitID(self.readJSON("parent"))
+        commitID = self.getCommitID(self.readJSON()["id"])
+        parentID = self.getCommitID(self.readJSON()["parent"])
         out = ""
         try:
             os.chdir(self.working_dir)
@@ -820,3 +818,17 @@ class gitRepo():
             logprint.info(stat[:l])
             logprint.info("...")
             logprint.info(stat[-1*l:])
+
+
+    # Chane representation of docker commands in git commits
+    def parseCommand(self, commands):
+        if commands is None:
+            return "--"
+        if isinstance(commands, basestring):
+            return commands
+        comment = ""
+        for command in commands:
+            s = command
+            s = s.encode('ascii', 'ignore')
+            comment += s + " "
+        return comment
