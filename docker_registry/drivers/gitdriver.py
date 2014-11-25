@@ -30,7 +30,7 @@ from docker_registry.core import lru
 
 logger = logging.getLogger(__name__)
 
-version = "0.7.33d"
+version = "0.7.34"
 #
 # Store only contnets of layer archive in git
 #
@@ -105,14 +105,18 @@ class Storage(file.Storage):
         global working_dir, storage_dir
         
         # Define path prefix: working dir (for images/) or storage_dir
-        if self.needLayer(path):
-            logprint.info("Need layer archive at path "+path,"IMPORTANT")
+        if path.endswith("_inprogress"):
+            logprint.info("Init path "+path,"IMPORTANT")
             logprint.info(traceback.format_stack()[-2],"OKYELLOW")
+            path = os.path.join(storage_dir, path) if path else storage_dir
+        elif self.needLayer(path):
+            logprint.info("Redirect path from "+path, "OKBLUE")
             parts = os.path.split(path)
             basename = parts[1]
             if (basename != "layer"):
                 logger.error("Not a layer path in layer storage block (_init_path): %s",path)
             path = os.path.join(working_dir,"layer")
+            logprint.info("to "+path,"OKBLUE")
         else:
             path = os.path.join(storage_dir, path) if path else storage_dir
         if create is True:
@@ -189,8 +193,7 @@ class Storage(file.Storage):
             except IOError:
                 raise exceptions.IOError("Error storing image file system.")
             
-        logprint.info("stream_write finished")
-        self.gitrepo.createCommit()        
+        logprint.info("stream_write finished")              
         return
 
     def list_directory(self, path=None):
@@ -236,6 +239,10 @@ class Storage(file.Storage):
             raise exceptions.FileNotFoundError('%s is not there' % path)
         logprint.info("Removed "+path)
         self.gitrepo.checkSettings()
+        if (path.endswith("_inprogress")):
+            logprint.info("Creating commit...","WARNING")
+            self.gitrepo.createCommit()
+        
 
     def get_size(self, path):
         logprint.info("get_size at " +path, "OKBLUE")
@@ -299,7 +306,7 @@ class gitRepo():
     image_name = None
     parentID = None
     branch_name = None
-    ontemporarybranch = False
+    # ontemporarybranch = False
     storage_path = None  # Path to layer tar with 
     #checked_commit = None  # ID of commit wich was last checked out into working dir
     ID_nums = 12  # Number of digits to store in ImageID
@@ -360,30 +367,21 @@ class gitRepo():
             self.image_name = os.path.split(splitpath[0])[1]            
             if splitpath[1].find("tag_") >=0:
                 image_tag = splitpath[1].split("_")[1]
-                self.branch_name = self.makeBranchName(image_tag)
+                tagged_branch_name = self.makeBranchName(image_tag)
                 if content is not None:
                     commitID = self.getCommitID(content)
                     logprint.info("Tagging image ID " + content[:self.ID_nums] + " commitID "+str(commitID),"IMPORTANT")
                     if commitID is not None:
-                        if self.ontemporarybranch:
-                            # Rename temporary branch
-                            target_branch_name = self.getBranchName(commitID)
-                            logprint.info("Rename branch "+ target_branch_name + 
-                                          " to "+ self.branch_name,"WARNING")
-                            self.gitcom.branch("-m",target_branch_name,self.branch_name)
-                            self.ontemporarybranch = False
-                        else:
-                            # New branch with image name
-                            branch= self.newBranch(self.branch_name,commitID)
-                            logprint.info("Updated branch "+ str(branch))
-
+                        # Create new branch
+                        branch= self.newBranch(tagged_branch_name,commitID)
+                        logprint.info("Put commit "+commitID+" on branch "+ str(branch))
             elif self.branch_name is None:
                 self.branch_name = self.makeBranchName()
         elif path.find(images_path) >= 0:            
             self.imageID = self.getImageIDFromPath(path)  # should be ["images/ImageID","something"]
         self.checkSettings()
 
-    # called from getInfoFromPath()
+    # called from getIomPath()
     def getImageIDFromPath(self,path=None):
         # path should be ..../Image/something
         if path.find(images_path) < 0:
@@ -756,7 +754,7 @@ class gitRepo():
                 return branch
         return None
 
-
+    # Create branch at given commit
     def newBranch(self,branch_name,commitID=None):
         if commitID is not None:
             if branch_name not in self.repo.branches:
@@ -877,6 +875,7 @@ class gitRepo():
     # Return commit ID that was last checked out
     def checked_commit(self):
         global working_dir
+        logprint.info("What is checked out commit? "+str(os.listdir(working_dir)))
         for filename in os.listdir(working_dir):
             if filename.startswith("imageID_"):
                 imageID = filename.split("_")[1]
