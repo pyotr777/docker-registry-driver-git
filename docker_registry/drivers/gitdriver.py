@@ -30,7 +30,7 @@ from docker_registry.core import lru
 
 logger = logging.getLogger(__name__)
 
-version = "0.7.34"
+version = "0.7.36"
 #
 # Store only contnets of layer archive in git
 #
@@ -364,7 +364,8 @@ class gitRepo():
         # path should be ...reposiroties/library/imagename/something
         if path.find(repository_path) >= 0:
             splitpath=os.path.split(path)  # should be [".../imagename","something"]
-            self.image_name = os.path.split(splitpath[0])[1]            
+            self.image_name = os.path.split(splitpath[0])[1]       
+            logprint.info("Image name: "+self.image_name,"CYAN")
             if splitpath[1].find("tag_") >=0:
                 image_tag = splitpath[1].split("_")[1]
                 tagged_branch_name = self.makeBranchName(image_tag)
@@ -481,7 +482,8 @@ class gitRepo():
         # store pair imageID:commitID in imagetable
         global working_dir, layer_dir
 
-        # branch_name = self.makeBranchName()        
+        if self.branch_name is None:
+            self.branch_name = self.makeBranchName()        
         logprint.info("Creating commit " +self.imageID[:8] + " branch:" + str(self.branch_name)+" parent:" + str(self.parentID)[:8],"IMPORTANT")
         
         if self.repo is None:
@@ -664,17 +666,22 @@ class gitRepo():
     
     # Returns commit object with ID = commitID
     def getCommit(self,commitID):
-        # logprint.info("Search commit "+commitID)
-        current_branch = self.repo.head.reference
+        logprint.info("Search commit "+commitID)
+        try:
+            current_branch = self.repo.head.reference
+        except TypeError as ex:
+             logprint.error("Error getting current branch. "+str(ex))
+             current_branch = None
         # self.repo.iter_commits() returns only commits on current branch
         # Loop through all branches
         for branch in self.repo.branches:
-            if self.repo.head.reference != branch:
-                self.repo.head.reference = branch
+            self.repo.head.reference = branch
             for commit in self.repo.iter_commits():
                 # logprint.info(commit.hexsha)
                 if commitID == commit.hexsha:
-                    self.repo.head.reference = current_branch
+                    if current_branch is not None:
+                        # Return reference to original branch
+                        self.repo.head.reference = current_branch
                     return commit
 
     def makeCommit(self, comment="Comment"):
@@ -733,7 +740,10 @@ class gitRepo():
     # Called from getInfoFromPath when put_content is called with image ID in path,
     # and from createCommit when need temporary branch name
     def makeBranchName(self,tag=None):
-        # logprint.info("makeBranchName " + str(tag),"OKYELLOW")
+        if self.image_name is None:
+            logprint.info("Image name is None. Fail to set branch name.","FAIL")
+            raise exceptions.Exception('Image name is not set')
+
         branch_name = None
         if tag is None:
             branch_name = self.image_name

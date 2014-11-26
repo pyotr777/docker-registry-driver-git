@@ -3,6 +3,7 @@
 import os
 import git as gitmodule
 import re
+import subprocess
 
 git_storage = "/Users/peterbryzgalov/gitstorage"
 working_dir = "git_working"
@@ -21,6 +22,7 @@ class bcolors:
         "ENDC": '\033[0m'
     }
 
+
 class Logprint:
 
     debug = True
@@ -30,10 +32,15 @@ class Logprint:
             print bcolors.code[mode] + str(s) + bcolors.code["ENDC"]
 
 
+def imageName(s):
+    return s.replace(".",":",1)
+
+
 logprint = Logprint()
 
 pattern = "tag: ([a-z0-9]{8,16})"
 p = re.compile(pattern)
+RA = "172.19.7.24:5000"
 
 os.chdir(git_storage)
 repo_dir = os.path.join(git_storage,working_dir)
@@ -52,7 +59,23 @@ for branch in branches:
     for commit in commits:
         m = re.search(pattern,commit)
         if m is not None and m.group(1) is not None:
-            logprint.info(m.group(1),"OKGREEN")
+            # logprint.info(m.group(1),"OKGREEN")
             commits_list.append(m.group(1))
-    logprint.info(repo.git.loga(),"OKBLUE")
+    # logprint.info(repo.git.loga(),"OKBLUE")
 
+    output = subprocess.check_output(['docker','history',"-q",RA+"/"+imageName(branch)])
+    imageID_list = output.split("\n")
+    ok = True
+    for i in range(len(imageID_list)):
+        if (i >= len(commits_list)):
+            if imageID_list[i] == "":
+                continue
+            else:
+                logprint.info(commits_list[i]+" != "+imageID_list[i],"WARNING")
+                ok = False 
+        else:
+            if commits_list[i].startswith(imageID_list[i]):
+                logprint.info(commits_list[i]+"  = "+imageID_list[i],"OKBLUE")
+            else:
+                logprint.info(commits_list[i]+" != "+imageID_list[i],"WARNING")
+                ok = False
