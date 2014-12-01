@@ -10,23 +10,7 @@
 	"folders":
 	[
 		{
-			"file_exclude_patterns":
-			[
-				"*.egg",
-				"*.sublime-workspace",
-				".coverage"
-			],
-			"folder_exclude_patterns":
-			[
-				".tox",
-				"*.egg-info",
-				"*.egg",
-				"*__pycache__",
-				"dist",
-				"build",
-				"tmp",
-				"tests/reports"
-			],
+			"follow_symlinks": true,
 			"path": "."
 		}
 	],

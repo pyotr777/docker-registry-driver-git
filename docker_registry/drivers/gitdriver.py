@@ -30,7 +30,7 @@ from docker_registry.core import lru
 
 logger = logging.getLogger(__name__)
 
-version = "0.7.36"
+version = "0.7.37"
 #
 # Store only contnets of layer archive in git
 #
@@ -107,7 +107,9 @@ class Storage(file.Storage):
         # Define path prefix: working dir (for images/) or storage_dir
         if path.endswith("_inprogress"):
             logprint.info("Init path "+path,"IMPORTANT")
-            logprint.info(traceback.format_stack()[-2],"OKYELLOW")
+            call_stack = traceback.format_stack()
+            for call in call_stack:
+                logprint.info(call,"OKYELLOW")
             path = os.path.join(storage_dir, path) if path else storage_dir
         elif self.needLayer(path):
             logprint.info("Redirect path from "+path, "OKBLUE")
