@@ -30,7 +30,7 @@ from docker_registry.core import lru
 
 logger = logging.getLogger(__name__)
 
-version = "0.7.60"
+version = "0.7.93"
 #
 # Store only contnets of layer archive in git
 #
@@ -106,7 +106,7 @@ class Storage(file.Storage):
         
         # Define path prefix: working dir (for images/) or storage_dir
         if path.endswith("_inprogress"):
-            logprint.info("Init path "+path,"IMPORTANT")
+            logprint.info("Init path "+path,"OKBLUE")
             #call_stack = traceback.format_stack()
             #for call in call_stack:
             #    logprint.info(call,"OKYELLOW")
@@ -129,7 +129,7 @@ class Storage(file.Storage):
     
     @lru.get
     def get_content(self, path):                
-        logprint.info("get_content from "+path, "OKBLUE")
+        logprint.info("get_content from "+path+" v"+version,"CYAN")
         self.gitrepo.getInfoFromPath(path)
         path = self._init_path(path)
         d=file.Storage.get_content(self,path)        
@@ -138,7 +138,7 @@ class Storage(file.Storage):
     @lru.set
     def put_content(self, path, content):
         # tag=self.haveImageTag(path)        
-        logprint.info("put_content at "+ path+ " "+ str(content)[:150],"OKBLUE")
+        logprint.info("put_content at "+ path+ " "+ str(content)[:150]+" v"+version,"CYAN")
         path = self._init_path(path, create=True)
         self.gitrepo.getInfoFromPath(path,content)
         with open(path, mode='wb') as f:
@@ -146,7 +146,7 @@ class Storage(file.Storage):
         return path
 
     def stream_read(self, path, bytes_range=None):
-        logprint.info("stream_read from "+path,"HEADER")
+        logprint.info("stream_read from "+path+" v"+version,"CYAN")
         self.remove_layer = self.gitrepo.prepareLayerTar(path)
         path = self._init_path(path)
         nb_bytes = 0
@@ -184,7 +184,7 @@ class Storage(file.Storage):
 
     def stream_write(self, path, fp):
         path = self._init_path(path, create=True)
-        logprint.info("stream_write " + path,"HEADER")
+        logprint.info("stream_write " + path+" v"+version,"CYAN")
         with open(path, mode='wb') as f:
             try:
                 while True:
@@ -215,8 +215,9 @@ class Storage(file.Storage):
             raise exceptions.FileNotFoundError('%s is not there' % path)
 
     def exists(self, path):
+        global version 
         global working_dir, layer_dir
-        logprint.info("exists at " +path, "CYAN")
+        logprint.info("exists at " +path+" v"+version,"CYAN")
         if self.needLayer(path):
             logprint.info("Need layer ready at "+ path,"IMPORTANT")
             self.remove_layer = self.gitrepo.prepareLayerTar(path)
@@ -229,8 +230,9 @@ class Storage(file.Storage):
         return exists
 
     @lru.remove
-    def remove(self, path):        
-        logprint.info("remove "+path)
+    def remove(self, path):       
+        global version 
+        logprint.info("remove "+path+" v"+version,"CYAN")
         path = self._init_path(path)
         if os.path.isdir(path):
             shutil.rmtree(path)
@@ -242,7 +244,7 @@ class Storage(file.Storage):
         logprint.info("Removed "+path)
         self.gitrepo.checkSettings()
         if (path.endswith("_inprogress")):
-            logprint.info("Creating commit...","WARNING")
+            logprint.info("Storage.remove(_inprogress) -> gitRepo.createCommit()","WARNING")
             self.gitrepo.createCommit()
         
 
@@ -335,6 +337,7 @@ class gitRepo():
     # Init git repository
     # Sets class variables "repo" and "gitcom".
     def initGitRepo(self, path=None):
+        logprint.info("Init git repo at "+path,"CYAN")
         if path is None:
             logger.info("Path is None in initGitRepo")
             return
@@ -349,6 +352,7 @@ class gitRepo():
         config.set_value("user","name","Docker_git")
         config.set_value("user","email","test@example.com")
         self.gitcom=self.repo.git
+        logprint.info("gitcom: "+str(self.gitcom))
         return
 
 
@@ -435,18 +439,6 @@ class gitRepo():
         return image_json
 
 
-    # Called from createCommit()
-    # Saves file list with permissions to filelist (global variable),
-    # Extracts tar to directory layer_dir (global variable),
-  
-    def storeLayer(self):
-        global working_dir, layer_dir
-        layer_tar_path = os.path.join(working_dir, "layer")
-        layer_dir_path = os.path.join(working_dir, layer_dir)
-        tar_members_num= self.untar(layer_tar_path, layer_dir_path)  # Untar to layer_dir and write to filelist
-        logprint.info("Untar "+str(tar_members_num)+" elements from "+layer_tar_path+" to " + layer_dir_path)
-        
-
     # Creates commit using following variables:
     # imageID:   ID of the image to store in Docker
     # image_name: Name of the docker image to store (as shown by docker images)
@@ -457,7 +449,7 @@ class gitRepo():
     # storage_path: path to FS storage directory (defined in config.yml) with direcotries "images" and "repositories"
     # imagetable: File with pairs imageID : commitID
     #
-    # Called from storeLayer
+    # Called from remove() 
     def createCommit(self):
        
         # FIND PARENT COMMIT
@@ -488,17 +480,26 @@ class gitRepo():
         # store pair imageID:commitID in imagetable
         global working_dir, layer_dir
 
-        if self.branch_name is None:
-            self.branch_name = self.makeBranchName()        
+        #if self.branch_name is None:
+        self.branch_name = self.makeBranchName()        
         logprint.info("Creating commit " +self.imageID[:8] + " branch:" + str(self.branch_name)+" parent:" + str(self.parentID)[:8],"IMPORTANT")
         
-        if self.repo is None:
+        if self.repo is None: 
             self.initGitRepo(working_dir)
+        
+        # Git repo status
+        logprint.info("Status: " + self.gitcom.status(), "OKGREEN")
+        try:
+            logprint.info("Log: " + self.gitcom.log("--pretty=format:'%h %d %s'",graph=True,all=True),"OKYELLOW")
+        except gitmodule.GitCommandError:
+            pass
+        logprint.info("branches:" + str(self.repo.branches),"OKGREEN")
+        logprint.info("heads:" + str(self.repo.heads),"OKYELLOW")
 
         parent_commit = None
-        parent_commitID = 0
+        parent_commitID = None
         branch = None
-        branch_last_commitID = 0
+        branch_last_commitID = None
 
         if self.parentID is not None:
             parent_commitID = self.getCommitID(self.parentID)
@@ -517,23 +518,22 @@ class gitRepo():
             if parent_commitID != branch_last_commitID:
                 self.branch_name = self.image_name
 
-        # CHECKOUT PARENT COMMIT
         # Need to put commit on branch with name branch_name
         # If branch "branch_name" exists switch to it
-        if parent_commit is not None:            
-            if self.branch_name is None:
-                branch=self.repo.head.reference
-                logprint.info("Positioned on branch "+str(branch))
-            elif self.branch_name not in self.repo.branches:
-                # Create new branch branch_name
-                branch=self.newBranch(self.branch_name,str(parent_commitID))
-                logprint.info("Created branch " + str(branch) + " from commmit "+
-                              str(parent_commitID))
-                logprint.info(self.gitcom.logf(graph=True))
-            else:
-                branch=self.repo.heads[self.branch_name]
-                logprint.info("Branch: "+str(branch))
-                
+        
+        if len(self.repo.branches) == 0:
+            logprint.info("No Branches. No commits yet?","OKGREEN")
+        elif self.branch_name not in self.repo.branches:
+            # Create new branch branch_name
+            branch=self.newBranch(self.branch_name,str(parent_commitID))
+            logprint.info("Created branch " + str(branch) + " from commmit "+
+                          str(parent_commitID))
+            logprint.info(self.gitcom.log("--pretty=format:'%h %d %s'",graph=True,all=True),"OKGREEN")
+        else:
+            branch=self.repo.heads[self.branch_name]
+            logprint.info("Branch: "+str(branch))
+            
+        # CHECKOUT PARENT COMMIT
         logprint.info("On branch " + str(branch) + 
                       " Last checked out commit "+str(self.checked_commit()))
         #logprint.info(bcolors.code["OKBLUE"])
@@ -547,7 +547,7 @@ class gitRepo():
                           parent_commitID[0:8] + " on branch "+ str(branch))
             self.rewindCommit(parent_commitID)
             logprint.info("git checked out " + str(parent_commit) + " ?")
-            logprint.info(self.gitcom.logf("--graph","--all"))
+            logprint.info(self.gitcom.log("--pretty=format:'%h %d %s'",graph=True,all=True),"OKGREEN")
             logprint.info(bcolors.code["ENDC"])
           
         comment = None
@@ -562,7 +562,7 @@ class gitRepo():
         
         # UNTAR
         self.storeLayer()
-
+        
         # Remove all (must be only one) old imageID_... files
         for filename in os.listdir(working_dir):
             if filename.startswith("imageID_"):
@@ -604,7 +604,7 @@ class gitRepo():
         if parent_commit is not None:
             parent_commitID = parent_commit.hexsha
         logprint.info("Created commit "+str(commitID)+" on branch "+str(self.repo.head.reference)+", parent commit "+str(parent_commitID),"OKGREEN")
-        logprint.info(self.gitcom.log("--pretty=format:'%h %d \t %s' --date=short --graph"))
+        logprint.info(self.gitcom.log("--pretty=format:'%h %d %s'",graph=True))
 
         # Add record to image table
         self.addRecord(self.imageID,commitID)
@@ -613,6 +613,20 @@ class gitRepo():
         #self.checked_commit = commit
         self.initSettings()
         return
+
+
+    # Called from createCommit()
+    # Saves file list with permissions to filelist (global variable),
+    # Extracts tar to directory layer_dir (global variable),
+  
+    def storeLayer(self):
+        global working_dir, layer_dir
+        layer_tar_path = os.path.join(working_dir, "layer")
+        layer_dir_path = os.path.join(working_dir, layer_dir)
+        tar_members_num= self.untar(layer_tar_path, layer_dir_path)  # Untar to layer_dir and write to filelist
+        logprint.info("Untar "+str(tar_members_num)+" elements from "+layer_tar_path+" to " + layer_dir_path)
+        
+
 
     # Extrace tar file source to dst directory
     def untar(self, source=None, dst=None):
@@ -682,7 +696,7 @@ class gitRepo():
         logger.debug("Reading from image table %s",image_table)
         for image, commit in csv.reader(open(image_table)):
             if image==imageID:
-                # logprint.info("Found commit "+commit)
+                logger.debug("Found commit "+commit)
                 return commit            
         return None
     
@@ -715,9 +729,15 @@ class gitRepo():
         except gitmodule.GitCommandError as expt:
             logprint.info("Exception at git add and commit "+ str(expt))
         logprint.info(self.gitcom.status(),"OKYELLOW")
-        logprint.info(self.gitcom.log("--pretty=format:'%h %d \t %s' --date=short --graph"),"OKGREEN")
-        logprint.info("HEAD:"+str(self.repo.head.reference.commit))
-        return self.repo.head.reference.commit
+        logprint.info(self.gitcom.log("--pretty=format:'%h %d %s'",graph=True),"OKGREEN")
+        try:
+            logprint.info("HEAD:"+str(self.repo.head.reference.commit))
+            return self.repo.head.reference.commit
+        except TypeError as exc:
+            logprint.error("HEAD detached. TypeError:" + str(exc))
+            logprint.info("Head:" +str(self.repo.head))
+            logprint.info("Ref:" +str(self.repo.head.reference))
+        return None
 
     # DELETE ME
     # Git check out branch.
@@ -763,9 +783,9 @@ class gitRepo():
     # and from createCommit when need temporary branch name
     def makeBranchName(self,tag=None):
         if self.image_name is None:
-            logprint.error("Image name is None. Use name \"master\"")
+            logprint.error("Image name is None. Use name imageID:"+str(self.imageID))
             # raise exceptions.Exception('Image name is not set')
-            self.image_name="master"
+            return self.imageID
 
         branch_name = None
         if tag is None:
@@ -788,11 +808,13 @@ class gitRepo():
         return None
 
     # Create branch at given commit
-    def newBranch(self,branch_name,commitID=None):
+    def newBranch(self,branch_name,commitID=None):        
+        logprint.info("Creating branch "+str(branch_name)+ " at " + str(commitID))
+        if branch_name is None:
+            branch_name = "master"
         if commitID is not None:
             if branch_name not in self.repo.branches:
-                self.gitcom.branch(branch_name,commitID)
-                logprint.info("Created branch "+branch_name+ " at " + commitID)
+                self.gitcom.branch(branch_name,commitID)                
             else:
                 # Force branch to point to commit 
                 if self.repo.head.reference != branch_name:
@@ -855,7 +877,7 @@ class gitRepo():
             filemode = filemods[i]
             logprint.info("Set permissions: "+str(filename)+" -> "+str(filemode),"OKBLUE")
             try:
-                os.chmod(filename,filemode)
+                os.chmod(filename,int(filemode))
             except OSError as ex:
                 logprint.error("Could not set file permissions.")
                 logprint.error(str(ex))

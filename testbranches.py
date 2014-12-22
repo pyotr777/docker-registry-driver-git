@@ -5,7 +5,7 @@ import git as gitmodule
 import re
 import subprocess
 
-git_storage = "/Users/peterbryzgalov/gitstorage"
+git_storage = "/Users/peterbryzgalov/work/gittest/"
 working_dir = "git_working"
 
 class bcolors:
@@ -40,7 +40,9 @@ logprint = Logprint()
 
 pattern = "tag: ([a-z0-9]{8,16})"
 p = re.compile(pattern)
-RA = "172.19.7.24:5000"
+RA = os.environ["RA"]
+if RA is None:
+    RA = "172.19.7.24:5000"
 
 os.chdir(git_storage)
 repo_dir = os.path.join(git_storage,working_dir)
