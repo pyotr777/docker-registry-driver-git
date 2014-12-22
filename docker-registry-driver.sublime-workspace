@@ -523,7 +523,7 @@
 			"file": "docker_registry/drivers/gitdriver.py",
 			"settings":
 			{
-				"buffer_size": 34402,
+				"buffer_size": 35491,
 				"line_ending": "Unix"
 			}
 		}
@@ -967,15 +967,15 @@
 					"semi_transient": false,
 					"settings":
 					{
-						"buffer_size": 34402,
+						"buffer_size": 35491,
 						"regions":
 						{
 						},
 						"selection":
 						[
 							[
-								7060,
-								7066
+								28187,
+								28187
 							]
 						],
 						"settings":
@@ -984,8 +984,8 @@
 							"tab_size": 4,
 							"translate_tabs_to_spaces": true
 						},
-						"translation.x": 3.0,
-						"translation.y": 3350.0,
+						"translation.x": 0.0,
+						"translation.y": 11740.0,
 						"zoom_level": 1.0
 					},
 					"stack_index": 0,
@@ -1003,7 +1003,7 @@
 					"semi_transient": false,
 					"settings":
 					{
-						"buffer_size": 34402,
+						"buffer_size": 35491,
 						"regions":
 						{
 						},
@@ -1021,7 +1021,7 @@
 							"translate_tabs_to_spaces": true
 						},
 						"translation.x": 0.0,
-						"translation.y": 0.0,
+						"translation.y": 1393.0,
 						"zoom_level": 1.0
 					},
 					"stack_index": 1,
@@ -1058,7 +1058,7 @@
 		"cols":
 		[
 			0.0,
-			0.5,
+			0.453414453952,
 			1.0
 		],
 		"rows":
