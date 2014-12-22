@@ -30,7 +30,7 @@ from docker_registry.core import lru
 
 logger = logging.getLogger(__name__)
 
-version = "0.7.93"
+version = "0.7.95"
 #
 # Store only contnets of layer archive in git
 #
@@ -525,7 +525,7 @@ class gitRepo():
             logprint.info("No Branches. No commits yet?","OKGREEN")
         elif self.branch_name not in self.repo.branches:
             # Create new branch branch_name
-            branch=self.newBranch(self.branch_name,str(parent_commitID))
+            branch=self.newBranch(self.branch_name,parent_commitID)
             logprint.info("Created branch " + str(branch) + " from commmit "+
                           str(parent_commitID))
             logprint.info(self.gitcom.log("--pretty=format:'%h %d %s'",graph=True,all=True),"OKGREEN")
@@ -589,7 +589,7 @@ class gitRepo():
             branch=self.newBranch(self.branch_name)
             self.repo.head.reference = branch
             logprint.info("Created branch " + str(branch))
-            logprint.info(self.gitcom.logf(graph=True))
+            logprint.info(self.gitcom.log("--pretty=format:'%h %d %s'",graph=True),"OKGREEN")
 
         # Get commit ID
         try:
@@ -604,7 +604,7 @@ class gitRepo():
         if parent_commit is not None:
             parent_commitID = parent_commit.hexsha
         logprint.info("Created commit "+str(commitID)+" on branch "+str(self.repo.head.reference)+", parent commit "+str(parent_commitID),"OKGREEN")
-        logprint.info(self.gitcom.log("--pretty=format:'%h %d %s'",graph=True))
+        logprint.info(self.gitcom.log("--pretty=format:'%h %d %s'",graph=True),"OKGREEN")
 
         # Add record to image table
         self.addRecord(self.imageID,commitID)
