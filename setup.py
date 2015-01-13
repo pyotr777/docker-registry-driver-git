@@ -8,21 +8,18 @@ except ImportError:
 
 
 __author__ = 'Peter Bryzgalov'
-__copyright__ = 'Copyright 2014'
+__copyright__ = 'Copyright 2015'
 __credits__ = []
 
 __license__ = 'Apache 2.0'
-__version__ = '0.7.37'
+__version__ = '0.7.103'
 __maintainer__ = __author__
 __email__ = 'peterbryz@yahoo.com'
 __status__ = 'Pre-Alpha'
 
-__title__ = 'docker-registry-driver-git'
-__build__ = 0x000000
-
-# __url__ = 'https://github.com/pyotr777/docker-registry-driver-git'
+__title__ = 'gitdriver'
+__build__ = 0x000001
 __description__ = 'Docker registry git driver'
-# d = 'https://github.com/pyotr777/docker-registry-driver-git/archive/master.zip'
 
 setuptools.setup(
     name=__title__,

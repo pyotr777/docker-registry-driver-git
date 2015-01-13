@@ -14,8 +14,6 @@ gitdriver stores information from images/ directory in git repository.
 """
 
 import os
-import sys
-import traceback
 import git as gitmodule
 import logging
 import tarfile
@@ -23,14 +21,19 @@ import json
 import shutil
 import csv
 import re
-from docker_registry.drivers import file
+# from docker_registry.drivers import file
+import file
 # from docker_registry.core import driver   # Inheritance: driver.Base --> file --> gitdriver
 from docker_registry.core import exceptions
 from docker_registry.core import lru
 
+from ..core import driver
+from ..core import exceptions
+from ..core import lru
+
 logger = logging.getLogger(__name__)
 
-version = "0.7.95"
+version = "0.7.104"
 #
 # Store only contnets of layer archive in git
 #
@@ -64,9 +67,10 @@ class bcolors:
 class Logprint:
 
     debug = True
+    codeword = "ancestry"
     
     def info(self, s=None, mode=None):
-        if str(s).find(repository_path) >= 0:
+        if str(s).find(self.codeword) >= 0:
             print bcolors.code["IMPORTANT"] + str(s) + bcolors.code["ENDC"]
             return
         if self.debug:
@@ -249,7 +253,7 @@ class Storage(file.Storage):
         
 
     def get_size(self, path):
-        logprint.info("get_size at " +path, "OKBLUE")
+        logprint.info("get_size at " +path, "CYAN")
         if self.needLayer(path):
             logprint.info("Need layer ready at "+ path,"IMPORTANT")
             self.remove_layer = self.gitrepo.prepareLayerTar(path)
@@ -257,7 +261,9 @@ class Storage(file.Storage):
         # logger.info("get_size %s",path)
         
         try:
+            logprint.info("Getting size of "+path)
             size = os.path.getsize(path)
+            logprint.info(size)
             if (self.remove_layer):
                 os.remove(os.path.join(working_dir,"layer"))
                 self.remove_layer = False
@@ -281,7 +287,7 @@ class Storage(file.Storage):
                 logprint.info("Have "+parts[1] + " in haveImageTag")
         return None
 
-    # Check out imageID directory from gir tepository and
+    # Check out imageID directory from git repository and
     # prepare layer as a tar archive.
     def prepareCheckout(self, path):
         fullpath = self.gitrepo.prepareCheckout(path)
@@ -817,12 +823,18 @@ class gitRepo():
                 self.gitcom.branch(branch_name,commitID)                
             else:
                 # Force branch to point to commit 
-                if self.repo.head.reference != branch_name:
-                    try:
-                        self.gitcom.branch(branch_name,commitID,f=True)
-                        logprint.info("Forced branch "+branch_name+" to point to "+ commitID)
-                    except gitmodule.GitCommandError as expt:
-                        logprint.info("Exception at git checkout "+ str(expt))
+                try:
+                    if self.repo.head.reference is None or self.repo.head.reference != branch_name:
+                        try:
+                            self.gitcom.branch(branch_name,commitID,f=True)
+                            logprint.info("Forced branch "+branch_name+" to point to "+ commitID)
+                        except gitmodule.GitCommandError as expt:
+                            logprint.info("Exception at git checkout "+ str(expt))
+                            logprint.info(self.gitcom.status(),"OKGREEN")
+                except TypeError as ex:
+                    logprint.info("Exception at git checkout "+ str(ex))
+                    logprint.info(self.gitcom.status(),"OKYELLOW")
+                    logprint.info(self.gitcom.log("--pretty=format:'%h %d %s'",graph=True,all=True),"OKYELLOW")
         else:
             self.gitcom.branch(branch_name)
             logprint.info("New branch "+branch_name)
@@ -875,9 +887,12 @@ class gitRepo():
         for i in range(len(filenames)):
             filename = os.path.join(working_dir,layer_dir,filenames[i])
             filemode = filemods[i]
-            logprint.info("Set permissions: "+str(filename)+" -> "+str(filemode),"OKBLUE")
+            # logprint.info("Set permissions: "+str(filename)+" -> "+str(filemode),"OKBLUE")
             try:
-                os.chmod(filename,int(filemode))
+                mode=int(filemode)
+                os.chmod(filename,mode)
+            except Exception as a:
+                logprint.error(str(a))
             except OSError as ex:
                 logprint.error("Could not set file permissions.")
                 logprint.error(str(ex))
