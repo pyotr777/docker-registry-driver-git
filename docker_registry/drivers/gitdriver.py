@@ -21,6 +21,7 @@ import json
 import shutil
 import csv
 import re
+import subprocess
 # from docker_registry.drivers import file
 import file
 # from docker_registry.core import driver   # Inheritance: driver.Base --> file --> gitdriver
@@ -33,7 +34,7 @@ from ..core import lru
 
 logger = logging.getLogger(__name__)
 
-version = "0.7.104"
+version = "0.7.107"
 #
 # Store only contnets of layer archive in git
 #
@@ -81,6 +82,12 @@ class Logprint:
 
     def error(self,s):
         logger.error(s)
+
+    def runBash(self,s):
+        p = subprocess.Popen(s.split(), stdout=subprocess.PIPE)
+        p.wait()
+        output = p.communicate()[0]
+        self.info("$ "+s+"\n"+str(output),"OKYELLOW")
 
 
 logprint = Logprint()
@@ -199,7 +206,8 @@ class Storage(file.Storage):
             except IOError:
                 raise exceptions.IOError("Error storing image file system.")
             
-        logprint.info("stream_write finished")              
+        logprint.info("stream_write finished")        
+        logprint.runBash("ls -l "+os.path.dirname(path))      
         return
 
     def list_directory(self, path=None):
@@ -256,9 +264,8 @@ class Storage(file.Storage):
         logprint.info("get_size at " +path, "CYAN")
         if self.needLayer(path):
             logprint.info("Need layer ready at "+ path,"IMPORTANT")
-            self.remove_layer = self.gitrepo.prepareLayerTar(path)
+            self.remove_layer = self.gitrepo.prepareLayerTar(path)            
         path = self._init_path(path)
-        # logger.info("get_size %s",path)
         
         try:
             logprint.info("Getting size of "+path)
@@ -319,7 +326,7 @@ class gitRepo():
     # ontemporarybranch = False
     storage_path = None  # Path to layer tar with 
     #checked_commit = None  # ID of commit wich was last checked out into working dir
-    ID_nums = 12  # Number of digits to store in ImageID
+    ID_nums = 16  # Number of digits to store in ImageID
 
     #root_commit = None  # ID of root commit in git repository
 
@@ -542,9 +549,6 @@ class gitRepo():
         # CHECKOUT PARENT COMMIT
         logprint.info("On branch " + str(branch) + 
                       " Last checked out commit "+str(self.checked_commit()))
-        #logprint.info(bcolors.code["OKBLUE"])
-        #logprint.info(self.gitcom.logf())
-        #logprint.info(bcolors.code["ENDC"])
 
         if branch is not None:
             self.repo.head.reference = branch
@@ -668,6 +672,9 @@ class gitRepo():
                     IOErrors = True
                 except OSError:
                     OSErrors = True
+                os.remove(source)  # Remove tar "layer"
+        else:
+            logprint.error("Tar archive "+source+ " broken or empty")            
         if (IOErrors):
             logprint.info("Had some IOErrors")
         if (OSErrors):
@@ -678,7 +685,6 @@ class gitRepo():
             except Exception as ex:
                 logprint.error(ex)
 
-        os.remove(source)  # Remove tar "layer"
         return len(tar_members)
 
     # Adds record to imagetable imageID : commitID
@@ -877,10 +883,11 @@ class gitRepo():
                 filenames.append(parts[0])
                 filemods.append(parts[1])
 
-        # layer_path = os.path.join(self.working_dir,"layer")
         tar_path = os.path.join(working_dir,"layer")
         if os.path.exists(tar_path):
+            # File layer could be left as is if tar archive was broken (untar returned 0 elements)
             logprint.info("File "+tar_path+" already exists in prepareLayerTar()","WARNING")
+            return False
         self.prepareCheckout(path)   
         
         # Set file permissions
@@ -908,6 +915,7 @@ class gitRepo():
                 logprint.info(item + " "+ str(ex))
         tar.close()
         logprint.info("Tar created "+ tar_path)
+        logprint.runBash("ls -l "+str(working_dir))
         return True
 
     def cleanDir(self, dir=None):
