@@ -12,7 +12,7 @@ __copyright__ = 'Copyright 2015'
 __credits__ = []
 
 __license__ = 'Apache 2.0'
-__version__ = '0.8.002'
+__version__ = '0.8.003'
 __maintainer__ = __author__
 __email__ = 'peterbryz@yahoo.com'
 __status__ = 'Pre-Alpha'

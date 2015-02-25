@@ -34,7 +34,7 @@ from ..core import lru
 
 logger = logging.getLogger(__name__)
 
-version = "0.7.117"
+version = "0.8.003"
 #
 # Store only contnets of layer archive in git
 #
