@@ -23,8 +23,8 @@ import csv
 import re
 import subprocess
 # from docker_registry.drivers import file
-#import file
-from docker_registry.core import driver   # Inheritance: driver.Base --> file --> gitdriver
+import file
+# from docker_registry.core import driver   # Inheritance: driver.Base --> file --> gitdriver
 from docker_registry.core import exceptions
 from docker_registry.core import lru
 
@@ -34,7 +34,7 @@ from ..core import lru
 
 logger = logging.getLogger(__name__)
 
-version = "0.8.002"
+version = "0.7.117"
 #
 # Store only contnets of layer archive in git
 #
@@ -106,7 +106,7 @@ class Logprint:
 logprint = Logprint()
 
 
-class Storage(driver.Base):
+class Storage(file.Storage):
 
     gitrepo = None
     remove_layer = None  # set to True when nedd to remove layer tar archive
@@ -115,7 +115,6 @@ class Storage(driver.Base):
         global working_dir, storage_dir, imagetable
         logger.info("Git backend driver %s initialisation", version)
         logger.info("Current dir %s, init dir %s, version %s",os.getcwd(),path,version)
-        self._root_path = path or './tmp'
         _root_dir = path or "./tmp"        
         working_dir = os.path.join(_root_dir,working_dir)
         storage_dir = os.path.join(_root_dir,storage_dir)
