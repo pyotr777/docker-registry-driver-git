@@ -2,17 +2,17 @@
 
 from docker_registry import testing
 
-from .mocker import Connection   # noqa
+
 
 
 class TestQuery(testing.Query):
     def __init__(self):
-        self.scheme = 'swift'
+        self.scheme = 'git'
 
 
 class TestDriver(testing.Driver):
     def __init__(self):
-        self.scheme = 'swift'
+        self.scheme = 'git'
         self.path = ''
         self.config = testing.Config({})
 

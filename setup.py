@@ -7,22 +7,22 @@ except ImportError:
     import distutils.core as setuptools
 
 
-__author__ = 'Matthew Fisher'
-__copyright__ = 'Copyright 2014'
+__author__ = 'Peter Bryzgalov'
+__copyright__ = 'Copyright 2015'
 __credits__ = []
 
 __license__ = 'Apache 2.0'
-__version__ = '0.2.1+git'
-__maintainer__ = 'Matthew Fisher'
-__email__ = 'matthewf@opdemand.com'
-__status__ = 'Production'
+__version__ = '0.8.002'
+__maintainer__ = __author__
+__email__ = 'peterbryz@yahoo.com'
+__status__ = 'Pre-Alpha'
 
-__title__ = 'docker-registry-driver-swift'
-__build__ = 0x000000
+__title__ = 'gitdriver'
+__build__ = 0x000001
 
-__url__ = 'https://github.com/bacongobbler/docker-registry-driver-swift'
-__description__ = 'Docker registry swift driver'
-d = 'https://github.com/bacongobbler/docker-registry-driver-swift/archive/master.zip'
+__url__ = ''
+__description__ = 'Docker registry git driver'
+d = ''
 
 setuptools.setup(
     name=__title__,

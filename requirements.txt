@@ -1,3 +1,2 @@
 docker-registry-core>=2,<3
-python-keystoneclient==0.10.0
-python-swiftclient==2.2.0
+GitPython>=0.3
