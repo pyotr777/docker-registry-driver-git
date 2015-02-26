@@ -34,7 +34,7 @@ from ..core import lru
 
 logger = logging.getLogger(__name__)
 
-version = "0.8.003"
+version = "0.8.012"
 #
 # Store only contnets of layer archive in git
 #
@@ -115,7 +115,8 @@ class Storage(file.Storage):
         global working_dir, storage_dir, imagetable
         logger.info("Git backend driver %s initialisation", version)
         logger.info("Current dir %s, init dir %s, version %s",os.getcwd(),path,version)
-        _root_dir = path or "./tmp"        
+        _root_dir = path or "./tmp"     
+        self._root_path = path or './tmp'   
         working_dir = os.path.join(_root_dir,working_dir)
         storage_dir = os.path.join(_root_dir,storage_dir)
         imagetable = os.path.join(_root_dir,imagetable)
@@ -137,8 +138,17 @@ class Storage(file.Storage):
             #path = os.path.join(storage_dir, path) if path else storage_dir
         elif self.needLayer(path):
             logprint.info("Redirect path from "+path, "OKBLUE")
-            path = self.gitrepo.getLayerPath(path)            
-            logprint.info("to "+path,"OKBLUE")
+            redirectpath = self.gitrepo.getLayerPath(path)
+            logprint.info("to "+redirectpath,"OKBLUE")
+            if not (os.path.exists(redirectpath) or create):
+                new_path = os.path.join(storage_dir, path) if path else storage_dir
+                if not (os.path.exists(new_path)):
+                    new_path = os.path.join(self._root_path, path) if path else self._root_path
+                path = new_path
+                logprint.info("Path "+redirectpath+" not exists. Use "+ path,"OKBLUE")
+            else:
+                path = redirectpath
+            
         else:
             path = os.path.join(storage_dir, path) if path else storage_dir
         if create is True:
@@ -172,9 +182,12 @@ class Storage(file.Storage):
         return path
 
     def stream_read(self, path, bytes_range=None):
-        logprint.info("stream_read from "+path+" v"+version,"CYAN")
+        logprint.functionStart("stream_read from "+path+" v"+version)
         self.remove_layer = self.gitrepo.prepareLayerTar(path)
         path = self._init_path(path)
+        parts = os.path.split(path)
+        basename = parts[0]
+        logprint.runBash("ls -l "+ basename)
         logprint.runBash("cat "+ path) 
         nb_bytes = 0
         total_size = 0
@@ -205,9 +218,10 @@ class Storage(file.Storage):
             logprint.info("Read finished")
         except IOError:
             raise exceptions.FileNotFoundError('%s is not there' % path)
-        if (self.remove_layer is not None):
-            os.remove(self.remove_layer)
-            self.remove_layer = None
+        finally:    
+            if (self.remove_layer is not None):
+                os.remove(self.remove_layer)
+                self.remove_layer = None
 
     def stream_write(self, path, fp):
         path = self._init_path(path, create=True)
@@ -224,7 +238,7 @@ class Storage(file.Storage):
             
         logprint.info("stream_write finished")        
         logprint.runBash("ls -l "+os.path.dirname(path))     
-        logprint.runBash("cat "+ path) 
+        #logprint.runBash("cat "+ path) 
         return
 
     def list_directory(self, path=None):
@@ -246,13 +260,18 @@ class Storage(file.Storage):
     def exists(self, path):
         global version 
         global working_dir, layer_dir
-        logprint.info("exists at " +path+" v"+version,"CYAN")
+        logprint.info("exists at " +path+" v"+version,"CYAN")        
         if self.needLayer(path):
             logprint.info("Need layer ready at "+ path,"IMPORTANT")
             self.remove_layer = self.gitrepo.prepareLayerTar(path)
         
         path = self._init_path(path)
         logprint.info("checking at " +path+" v"+version,"CYAN")
+        parts = os.path.split(path)
+        parts = os.path.split(parts[0])
+        basename = parts[0]
+        if os.path.exists(basename) and os.path.isdir(basename):
+            logprint.runBash("ls -l "+ basename)
         exists = os.path.exists(path)
         if (self.remove_layer is not None):
             os.remove(self.remove_layer)
@@ -934,7 +953,7 @@ class gitRepo():
             logprint.info("File "+tar_path+" already exists in prepareLayerTar()","WARNING")
             return None
         if (self.prepareCheckout(path) is None) :
-            logprint.info("Checkout for "+path+"not found")
+            logprint.info("Checkout for "+path+" not found")
             return None
 
         

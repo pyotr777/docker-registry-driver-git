@@ -53,19 +53,4 @@ class TestDriver(testing.Driver):
         self.setUp()
         super(TestDriver, self).test_list_directory_with_subdir()
 
-    def test_swift_root_path_default(self):
-        assert self._storage._root_path == '/'
-        assert self._storage._init_path() == ''
-        assert self._storage._init_path('foo') == 'foo'
-
-    def test_swift_root_path_empty(self):
-        config = testing.Config({'storage_path': ''})
-        self._storage.__init__(config=config)
-        assert self._storage._init_path() == ''
-        assert self._storage._init_path('foo') == 'foo'
-
-    def test_swift_root_path_custom(self):
-        config = testing.Config({'storage_path': '/foo'})
-        self._storage.__init__(config=config)
-        assert self._storage._init_path() == 'foo'
-        assert self._storage._init_path('foo') == 'foo/foo'
+    
