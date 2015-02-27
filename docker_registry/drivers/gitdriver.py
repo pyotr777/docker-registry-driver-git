@@ -32,7 +32,7 @@ from docker_registry.core import lru
 
 logger = logging.getLogger(__name__)
 
-version = "0.8.013"
+version = "0.8.015"
 #
 # Store only contnets of layer archive in git
 #
@@ -67,7 +67,7 @@ class BColors:
 
 class Logprint:
 
-    debug = True
+    debug = False
     codeword = "ancestry"
 
     def info(self, s=None, mode=None):
@@ -87,9 +87,13 @@ class Logprint:
         p = subprocess.Popen(s.split(), stdout=subprocess.PIPE)
         p.wait()
         output = p.communicate()[0]
-        self.info("$ " + s + "\n" + str(output), "OKYELLOW")
+        if self.debug:
+            self.info("$ " + s + "\n" + str(output), "OKYELLOW")
+        return output
 
     def function_start(self, *argv):
+        if not self.debug:
+            return
         s = argv[0]
         if len(argv) > 1:
             args = ""

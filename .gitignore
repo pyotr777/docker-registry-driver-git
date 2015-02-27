@@ -1,5 +1,5 @@
 .coverage
-
+.tox
 # Packages
 *.egg
 *.egg-info
@@ -7,7 +7,7 @@ dist
 build
 eggs
 tmp
-
+/images/
 *.DS_Store
 
 *.pyc
