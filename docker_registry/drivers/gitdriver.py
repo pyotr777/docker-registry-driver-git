@@ -32,7 +32,7 @@ from docker_registry.core import lru
 
 logger = logging.getLogger(__name__)
 
-version = "0.8.015"
+version = "0.8.016d"
 #
 # Store only contnets of layer archive in git
 #
@@ -67,7 +67,7 @@ class BColors:
 
 class Logprint:
 
-    debug = False
+    debug = True
     codeword = "ancestry"
 
     def info(self, s=None, mode=None):
@@ -138,7 +138,7 @@ class Storage(file.Storage):
             # call_stack = traceback.format_stack()
             # for call in call_stack:
             #    logprint.info(call,"OKYELLOW")
-            # path = os.path.join(storage_dir, path) if path else storage_dir
+            path = os.path.join(storage_dir, path) if path else storage_dir
         elif self.need_layer(path):
             logprint.info("Redirect path from " + path, "OKBLUE")
             redirectpath = self.gitrepo.get_layer_path(path)
