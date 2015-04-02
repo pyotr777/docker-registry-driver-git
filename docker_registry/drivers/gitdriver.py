@@ -32,7 +32,7 @@ from docker_registry.core import lru
 
 logger = logging.getLogger(__name__)
 
-version = "0.8.016d"
+version = "0.8.017d"
 #
 # Store only contnets of layer archive in git
 #
@@ -195,8 +195,9 @@ class Storage(file.Storage):
         path = self._init_path(path)
         parts = os.path.split(path)
         basename = parts[0]
-        logprint.run_bash("ls -l " + basename)
-        logprint.run_bash("cat " + path)
+        logprint.info("Check that file to read exists in stream_read:")
+        logprint.run_bash("pwd ")
+        logprint.run_bash("ls -l " + basename + " | grep " + parts[1])
         nb_bytes = 0
         total_size = 0
         try:

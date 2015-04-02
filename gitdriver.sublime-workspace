@@ -517,9 +517,6 @@
 			]
 		]
 	},
-	"buffers":
-	[
-	],
 	"build_system": "",
 	"build_system_choices":
 	[
@@ -679,12 +676,12 @@
 		"side_bar_visible": false,
 		"status_bar_visible": false
 	},
-	"expanded_folders":
-	[
-		"/Users/peterbryzgalov/work/docker/docker-registry-driver-git"
-	],
 	"file_history":
 	[
+		"/Users/peterbryzgalov/work/docker/docker-registry-driver-git/docker_registry/drivers/gitdriver.py",
+		"/Users/peterbryzgalov/work/docker/docker-registry-driver-git/.tox/flake8/lib/python2.7/site-packages/docker_registry/drivers/gitdriver.py",
+		"/Users/peterbryzgalov/work/docker/docker-registry-driver-git/setup.py",
+		"/Users/peterbryzgalov/work/docker/docker-registry-driver-git/setup.cfg",
 		"/Users/peterbryzgalov/work/Eclipse PTP/profiling on K login node.txt",
 		"/Users/peterbryzgalov/work/workspaceJava7/kscope/makeRemote.sh",
 		"/Users/peterbryzgalov/Desktop/docker/K-scope/remote/sshconnect/kscope.aics.riken.jp.yml",
@@ -704,8 +701,6 @@
 		"/Users/peterbryzgalov/work/docker/docker-registry-driver-git/tests/mocker.py",
 		"/Users/peterbryzgalov/work/docker/docker-registry/tests/test_layers.py",
 		"/Users/peterbryzgalov/work/docker/docker-registry/setup.cfg",
-		"/Users/peterbryzgalov/work/docker/docker-registry-driver-git/docker_registry/drivers/gitdriver.py",
-		"/Users/peterbryzgalov/work/docker/docker-registry-driver-git/setup.cfg",
 		"/Users/peterbryzgalov/Desktop/K/.eclipsesettings/rms/PJM/da_jobs_info_LML.pl",
 		"/Users/peterbryzgalov/work/workspacePTP/C_MPI/job.sh",
 		"/Users/peterbryzgalov/work/workspacePTP/syncMPIc/profile.0.0.0",
@@ -742,7 +737,6 @@
 		"/Users/peterbryzgalov/work/docker/docker-registry-driver-git/docker_registry/drivers/__init__.py",
 		"/Users/peterbryzgalov/work/docker/docker-registry/hardrestart.sh",
 		"/Users/peterbryzgalov/work/docker/docker-registry/restart.py",
-		"/Users/peterbryzgalov/work/docker/docker-registry-driver-git/setup.py",
 		"/Users/peterbryzgalov/work/docker/docker_registry_driver_git/setup.cfg",
 		"/Users/peterbryzgalov/work/docker/docker_registry_driver_git/setup.py",
 		"/Users/peterbryzgalov/work/docker/docker_registry_driver_git/testbranches.py",
@@ -811,12 +805,11 @@
 		"/Users/peterbryzgalov/work/docker-registry-driver-git/setup.py",
 		"/Users/peterbryzgalov/Desktop/docker/dotcloud/docker-registry/depends/docker-registry-core/docker_registry/drivers/__init__.py",
 		"/Users/peterbryzgalov/Desktop/docker/dotcloud/docker-registry/depends/docker-registry-core/setup.py",
-		"/Users/peterbryzgalov/.vim/colors/sorcerer.vim",
-		"/Users/peterbryzgalov/Library/Application Support/Sublime Text 3/Packages/ExportHtml/ExportHtml.sublime-settings"
+		"/Users/peterbryzgalov/.vim/colors/sorcerer.vim"
 	],
 	"find":
 	{
-		"height": 25.0
+		"height": 35.0
 	},
 	"find_in_files":
 	{
@@ -831,6 +824,11 @@
 		"case_sensitive": false,
 		"find_history":
 		[
+			"checking at",
+			"images",
+			"newBranch",
+			"Put commit ",
+			"newBranch",
 			"$  ",
 			"C_MPIt",
 			"C_MPI",
@@ -953,12 +951,7 @@
 			"getImageFromPath",
 			"printSettings",
 			"file",
-			"ignore",
-			"[",
-			"colo",
-			"shutil",
-			"commitID",
-			"getCommitID"
+			"ignore"
 		],
 		"highlight": false,
 		"in_selection": false,
@@ -994,14 +987,6 @@
 		"whole_word": false,
 		"wrap": true
 	},
-	"groups":
-	[
-		{
-			"sheets":
-			[
-			]
-		}
-	],
 	"incremental_find":
 	{
 		"height": 25.0
@@ -1042,7 +1027,6 @@
 		"height": 112.0
 	},
 	"pinned_build_system": "",
-	"project": "gitdriver.sublime-project",
 	"replace":
 	{
 		"height": 46.0
@@ -1075,7 +1059,6 @@
 		],
 		"width": 392.0
 	},
-	"selected_group": 0,
 	"settings":
 	{
 	},
