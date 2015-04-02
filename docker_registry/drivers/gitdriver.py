@@ -33,7 +33,7 @@ from docker_registry.core import lru
 
 logger = logging.getLogger(__name__)
 
-version = "0.8.018d"
+version = "0.8.019d"
 #
 # Store only contnets of layer archive in git
 #
@@ -548,8 +548,10 @@ class GitRepo():
         global working_dir, layer_dir
 
         logprint.info("createCommit", "NOTE")
-        # if self.branch_name is None:
-        self.branch_name = self.makeBranchName()
+        if self.branch_name is None or self.branch_name.find("tmp") != 0:
+            self.branch_name = self.makeBranchName()
+        elif self.branch_name is not None:
+            logprint.info("On temporary branch " + self.branch_name)
         logprint.info("Creating commit for " + self.imageID[:8] + " branch:" +
                       str(self.branch_name) + " parent:" +
                       str(self.parentID)[:8], "IMPORTANT")
