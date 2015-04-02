@@ -23,6 +23,7 @@ import shutil
 import csv
 import re
 import subprocess
+import time
 # from docker_registry.drivers import file
 import file
 # from docker_registry.core import driver
@@ -32,7 +33,7 @@ from docker_registry.core import lru
 
 logger = logging.getLogger(__name__)
 
-version = "0.8.017d"
+version = "0.8.018d"
 #
 # Store only contnets of layer archive in git
 #
@@ -193,11 +194,6 @@ class Storage(file.Storage):
         logprint.function_start("stream_read from " + path + " v" + version)
         self.remove_layer = self.gitrepo.prepareLayerTar(path)
         path = self._init_path(path)
-        parts = os.path.split(path)
-        basename = parts[0]
-        logprint.info("Check that file to read exists in stream_read:")
-        logprint.run_bash("pwd ")
-        logprint.run_bash("ls -l " + basename + " | grep " + parts[1])
         nb_bytes = 0
         total_size = 0
         try:
@@ -402,11 +398,18 @@ class GitRepo():
                 logger.error(ex)
         logger.info("Make git repo at %s", path)
         self.repo = gitmodule.Repo.init(path)
-        config = self.repo.config_writer()
-        config.set_value("user", "name", "Docker_git")
-        config.set_value("user", "email", "test@example.com")
-        self.gitcom = self.repo.git
-        logprint.info("gitcom: " + str(self.gitcom))
+        try:
+            config = self.repo.config_writer()
+            config.set_value("user", "name", "Docker_git")
+            config.set_value("user", "email", "test@example.com")
+            config.release()
+            self.gitcom = self.repo.git
+            logprint.info("gitcom: " + str(self.gitcom))
+        except:
+            time.sleep(1)
+            config = self.repo.config_reader()
+            name = config.get_value("user", "name")
+            logger.info("git configuration has name " + name)
         return
 
     # Returns real path to layer tar archive
@@ -547,7 +550,7 @@ class GitRepo():
         logprint.info("createCommit", "NOTE")
         # if self.branch_name is None:
         self.branch_name = self.makeBranchName()
-        logprint.info("Creating commit for" + self.imageID[:8] + " branch:" +
+        logprint.info("Creating commit for " + self.imageID[:8] + " branch:" +
                       str(self.branch_name) + " parent:" +
                       str(self.parentID)[:8], "IMPORTANT")
 
