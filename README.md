@@ -3,7 +3,7 @@
 This is a [docker-registry backend driver][registry-core] which stores images 
 in a git repository.
 
-
+[![PyPI version][pypi-image]][pypi-url]
 ## Usage
 
 
@@ -24,3 +24,5 @@ storage: gitdriver
 storage_path: /gitrepopath
 
 ```
+[pypi-url]: https://pypi.python.org/pypi/docker-registry-driver-git
+[pypi-image]: https://badge.fury.io/py/docker-registry-driver-git.svg

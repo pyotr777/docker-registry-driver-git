@@ -8,9 +8,9 @@ docker_registry.drivers.gitdriver
 
 This is a basic git based driver.
 
-File storage driver stores information in two directories: images/ and
+"File" storage driver stores information in two directories: images/ and
 repositories/.
-gitdriver stores information from images/ directory in a git repository.
+"gitdriver" stores information from images/ directory in a git repository.
 
 """
 
@@ -33,7 +33,7 @@ from docker_registry.core import lru
 
 logger = logging.getLogger(__name__)
 
-version = "0.8.019d"
+version = "0.9.000"
 #
 # Store only contnets of layer archive in git
 #
@@ -68,7 +68,7 @@ class BColors:
 
 class Logprint:
 
-    debug = True
+    debug = False
     codeword = "ancestry"
 
     def info(self, s=None, mode=None):
