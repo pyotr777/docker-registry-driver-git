@@ -678,6 +678,7 @@
 	},
 	"file_history":
 	[
+		"/Users/peterbryzgalov/work/docker/docker-registry-driver-git/README.md",
 		"/Users/peterbryzgalov/work/docker/docker-registry-driver-git/docker_registry/drivers/gitdriver.py",
 		"/Users/peterbryzgalov/work/docker/docker-registry-driver-git/.tox/flake8/lib/python2.7/site-packages/docker_registry/drivers/gitdriver.py",
 		"/Users/peterbryzgalov/work/docker/docker-registry-driver-git/setup.py",
@@ -804,8 +805,7 @@
 		"/Users/peterbryzgalov/work/docker-registry-driver-git/requirements.txt",
 		"/Users/peterbryzgalov/work/docker-registry-driver-git/setup.py",
 		"/Users/peterbryzgalov/Desktop/docker/dotcloud/docker-registry/depends/docker-registry-core/docker_registry/drivers/__init__.py",
-		"/Users/peterbryzgalov/Desktop/docker/dotcloud/docker-registry/depends/docker-registry-core/setup.py",
-		"/Users/peterbryzgalov/.vim/colors/sorcerer.vim"
+		"/Users/peterbryzgalov/Desktop/docker/dotcloud/docker-registry/depends/docker-registry-core/setup.py"
 	],
 	"find":
 	{

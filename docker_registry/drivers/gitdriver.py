@@ -33,7 +33,7 @@ from docker_registry.core import lru
 
 logger = logging.getLogger(__name__)
 
-version = "0.9.000"
+version = "0.9.001"
 #
 # Store only contnets of layer archive in git
 #
@@ -67,8 +67,13 @@ class BColors:
 
 
 class Logprint:
+    # LOGLEVEL env var can be one of: debug, info, warn, error or critical
+    debug = os.getenv("LOGLEVEL", "debug")
+    if debug == "debug" or debug == "info":
+        debug = True
+    else:
+        debug = False
 
-    debug = False
     codeword = "ancestry"
 
     def info(self, s=None, mode=None):
@@ -79,7 +84,7 @@ class Logprint:
             if mode is not None:
                 print BColors.code[mode] + str(s) + BColors.code["ENDC"]
             else:
-                print s
+                logger.info(s)
 
     def error(self, s):
         logger.error(s)

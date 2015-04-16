@@ -4,14 +4,12 @@
 *.egg
 *.egg-info
 dist
+Dockerfile
 build
 eggs
 tmp
 /images/
 *.DS_Store
-
 *.pyc
-
 /reports/
-
 /tests/reports/
