@@ -4,7 +4,6 @@
 *.egg
 *.egg-info
 dist
-Dockerfile
 build
 eggs
 tmp

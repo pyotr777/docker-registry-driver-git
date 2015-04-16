@@ -1,0 +1,11 @@
+Docker registry git driver
+
+This is a docker registry backend driver which stores images 
+in a git repository.
+
+Install it with 
+
+pip install docker-registry-driver-git
+
+Then edit your docker-registry configuration so that `storage` reads `gitdriver`.
+
